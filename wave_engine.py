@@ -311,6 +311,118 @@ def _enrich_pickorder_routes(po_routes, assignment_data, scc_data):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  CARGO BIKE WAVE BUILDER (Wave C)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_cargo_bike_waves(dispatch_data, assignment_data, scc_data, cfg):
+    """
+    Build Wave C for cargo bike routes (BK_ prefix).
+    
+    Cargo bikes have their own timing and don't use the standard A/B pad rotation.
+    They dispatch from Pad C with consecutive lanes (no spreading).
+    
+    Returns list of wave_c blocks, typically just one or two.
+    """
+    from datetime import timedelta
+    
+    wave_c = []
+    bike_routes = []
+    
+    # Collect cargo bike routes from dispatch data
+    for time_str, pads in dispatch_data.items():
+        if "C" in pads:
+            for route_entry in pads["C"]:
+                route_code = route_entry.get("route", "")
+                if route_code.startswith("BK_") or route_code.startswith("CB_"):
+                    bike_routes.append({
+                        "route": route_code,
+                        "dsp": route_entry.get("dsp", ""),
+                        "lane": route_entry.get("lane", ""),
+                        "dispatch_time": time_str,
+                    })
+    
+    # Also check for BK_ routes that might be in A or B pads (misclassified)
+    for time_str, pads in dispatch_data.items():
+        for pad_key in ["A", "B"]:
+            if pad_key in pads:
+                for route_entry in pads[pad_key]:
+                    route_code = route_entry.get("route", "")
+                    if route_code.startswith("BK_") or route_code.startswith("CB_"):
+                        # Move to cargo bike list
+                        bike_routes.append({
+                            "route": route_code,
+                            "dsp": route_entry.get("dsp", ""),
+                            "lane": route_entry.get("lane", ""),
+                            "dispatch_time": time_str,
+                        })
+    
+    if not bike_routes:
+        return []
+    
+    # Enrich with assignment and SCC data
+    for route in bike_routes:
+        route_code = route["route"]
+        
+        # Assignment data
+        if route_code in assignment_data:
+            assign = assignment_data[route_code]
+            route["service_type"] = assign.get("service_type", "Cargo Bike")
+            route["da_id"] = assign.get("da_id", "UNASSIGNED")
+            route["dsp"] = route.get("dsp") or assign.get("dsp", "")
+        else:
+            route["service_type"] = "Cargo Bike"
+            route["da_id"] = "UNASSIGNED"
+        
+        # SCC data
+        if route_code in scc_data:
+            scc = scc_data[route_code]
+            route["bags"] = scc.get("bags", 0)
+            route["ovs"] = scc.get("ovs", 0)
+            route["total_carts"] = scc.get("total_carts", 0)
+        else:
+            route["bags"] = 0
+            route["ovs"] = 0
+            route["total_carts"] = 0
+        
+        route["is_cargo_bike"] = True
+        route["notes"] = "Cargo Bike"
+    
+    # Group by dispatch time and create wave blocks
+    from collections import defaultdict
+    by_time = defaultdict(list)
+    for route in bike_routes:
+        by_time[route["dispatch_time"]].append(route)
+    
+    wave_num = 1
+    for time_str in sorted(by_time.keys(), key=_parse_time_str):
+        routes = by_time[time_str]
+        
+        # Assign consecutive lanes (no spreading for cargo bikes)
+        for i, route in enumerate(routes, start=1):
+            route["lane"] = f"STG-C{i}"
+            route["lane_num"] = i
+        
+        wave_time = _parse_time_str(time_str)
+        
+        wave_c.append({
+            "wave_number": wave_num,
+            "wave_label": f"Wave C{wave_num}" if len(by_time) > 1 else "Wave C",
+            "wave_time": time_str,
+            "on_pad_time": _fmt_time(wave_time - timedelta(minutes=cfg.get("on_pad_offset_min", 5))),
+            "last_exit_time": _fmt_time(wave_time + timedelta(minutes=cfg.get("last_exit_min", 25))),
+            "routes": routes,
+            "route_count": len(routes),
+            "total_carts": sum(r.get("total_carts", 0) for r in routes),
+            "status": "not_started",
+            "cleared_at": None,
+            "swiped_at": None,
+        })
+        wave_num += 1
+    
+    return wave_c
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  WAVE BUILDERS (Fallback when no PickOrder)
 # ─────────────────────────────────────────────────────────────────────────────
 
