@@ -642,20 +642,23 @@ def check_missing_data(sources):
 def _build_plan():
     """Build the wave plan — only called when all data is confirmed present."""
     try:
+        # v1.5 FIX: Pass pickorder_data to build_wave_plan so it can be used as
+        # source of truth for wave structure (times, pads, routes per wave)
         wave_plan = build_wave_plan(
             _dm.dispatch_data or {},
             _dm.assignment_data or {},
             _dm.scc_data or {},
+            pickorder_data=_dm.pickorder_data,  # CRITICAL: This enables v1.5 pickorder-first logic
         )
 
-        # Apply pickorder lane spreading if available
-        if _dm.pickorder_data:
+        # Apply pickorder lane spreading if available (for legacy fallback path)
+        if _dm.pickorder_data and not wave_plan.get("pickorder_applied"):
             from pickorder_parser import apply_pickorder_to_plan
             apply_pickorder_to_plan(wave_plan, _dm.pickorder_data)
             app.logger.info(
                 f"Pickorder spread applied: {wave_plan.get('pickorder_stats', {}).get('routes_mapped', 0)} routes"
             )
-        else:
+        elif not _dm.pickorder_data:
             wave_plan["pickorder_applied"] = False
 
         _plan_cache["wave_plan"] = wave_plan
@@ -667,6 +670,8 @@ def _build_plan():
         return wave_plan
     except Exception as e:
         app.logger.error(f"Plan build failed: {e}")
+        import traceback
+        app.logger.error(traceback.format_exc())
         return None
 
 
