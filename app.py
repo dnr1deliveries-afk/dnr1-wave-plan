@@ -1,5 +1,5 @@
 """
-app.py — DNR1 Wave Plan Tool v1.3
+app.py — DNR1 Wave Plan Tool v1.4
 Flask web app with full missing data prompting + DSP Slack integration + Excel Export.
 
 If any required data source is missing, the app:
@@ -415,6 +415,68 @@ def api_export_wave_plan():
 # ─────────────────────────────────────────────────────────────────────────────
 #  API ENDPOINTS
 # ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────────────
+#  REMOTE DATA PUSH API (for Render deployment)
+# ───────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/push-data", methods=["POST"])
+def api_push_data():
+    """
+    Receive data pushed from a local machine with Midway access.
+    This allows the Render deployment to receive auto-fetched data.
+    
+    Expected JSON payload:
+    {
+        "plan_date": "2026-04-23",
+        "dispatch_text": "...",
+        "assignment_text": "..."
+    }
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON data received"}), 400
+    
+    results = {
+        "plan_date": data.get("plan_date"),
+        "dispatch": None,
+        "assignment": None,
+        "plan_generated": False
+    }
+    
+    # Load dispatch data
+    dispatch_text = data.get("dispatch_text")
+    if dispatch_text:
+        result = _dm.load_dispatch_from_paste(dispatch_text)
+        results["dispatch"] = {
+            "success": result.get("success", False),
+            "records": result.get("records", 0),
+            "error": result.get("error")
+        }
+    
+    # Load assignment data
+    assignment_text = data.get("assignment_text")
+    if assignment_text:
+        result = _dm.load_assignment_from_paste(assignment_text)
+        results["assignment"] = {
+            "success": result.get("success", False),
+            "records": result.get("records", 0),
+            "error": result.get("error")
+        }
+    
+    # Auto-build plan if all data present
+    can_gen, _ = _get_plan_readiness()
+    if can_gen:
+        wave_plan = _build_plan()
+        if wave_plan:
+            results["plan_generated"] = True
+            results["summary"] = wave_plan.get("summary", {})
+    
+    return jsonify(results)
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+#  API ENDPOINTS
+# ───────────────────────────────────────────────────────────────────────────────
 
 @app.route("/api/status")
 def api_status():
@@ -432,6 +494,11 @@ def api_status():
 
 @app.route("/api/plan")
 def api_plan():
+    wave_plan = _plan_cache.get("wave_plan")
+    if not wave_plan:
+        return jsonify({"error": "No plan loaded", "missing": check_missing_data(_dm.sources)}), 404
+    return jsonify(wave_plan)
+
     wave_plan = _plan_cache.get("wave_plan")
     if not wave_plan:
         return jsonify({"error": "No plan loaded", "missing": check_missing_data(_dm.sources)}), 404
@@ -650,7 +717,7 @@ def _send_cleared_alert(wave_label, time_str):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     debug = os.environ.get("FLASK_DEBUG", "true").lower() == "true"
-    print(f"\n🚛 DNR1 Wave Plan Tool v1.3 starting on http://localhost:{port}")
+    print(f"\n🚛 DNR1 Wave Plan Tool v1.4 starting on http://localhost:{port}")
     print(f"📱 Slack webhooks configured for {len(DSP_OPS_WEBHOOKS)} DSPs: {', '.join(DSP_OPS_WEBHOOKS.keys())}")
     print(f"📄 Excel export available at /export/wave-plan\n")
     app.run(host="0.0.0.0", port=port, debug=debug)
