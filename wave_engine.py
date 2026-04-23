@@ -314,10 +314,12 @@ def _enrich_pickorder_routes(po_routes, assignment_data, scc_data):
 #  WAVE BUILDERS (Fallback when no PickOrder)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _build_main_waves(dispatch_data, assignment_data, scc_data, cfg, pickorder_data):
+    """Fallback wave builder when PickOrder data is not available."""
+    waves = []
     wave_num = 1
 
     for time_str in sorted(dispatch_data.keys(), key=_parse_time_str):
-        pads = dispatch_data[time_str]
 
         # Guard: skip None entries, skip BK_ routes
         pad_a_raw = [r for r in pads.get("A", [])
