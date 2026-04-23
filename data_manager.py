@@ -11,6 +11,11 @@ MISSING DATA POLICY:
   - Never generate a partial plan
   - Always tell the user what's missing and how to fix it
   - Plan generation is blocked until all required data is present
+
+v1.3 UPDATE:
+  - Sequencing and Auto-Assign are now NON-BLOCKING by default
+  - These are informational warnings, not hard blockers
+  - Core data (dispatch, assignment, SCC) remain required
 """
 
 from dataclasses import dataclass, field
@@ -19,9 +24,9 @@ from datetime import date
 import re
 
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 #  DATA STATUS
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class DataSource:
@@ -56,23 +61,26 @@ def build_data_sources() -> dict:
             prompt_action="upload_csv",
         ),
         "pickorder": DataSource(
-            name="Pick Order (Lane Spread)", key="pickorder", required=True,
+            name="Pick Order (Lane Spread)", key="pickorder", required=False,  # Optional - uses consecutive if missing
             prompt_message=(
                 "The Pick Order CSV hasn't been loaded. "
                 "This spreads routes evenly across all 30 staging lanes. "
                 "Download from Dispatch Planning: bottom of page, 'Day of Ops' CSV. "
                 "Without it, routes use consecutive lanes from 1."
             ),
-            prompt_action="auto_fetch",
+            prompt_action="upload_csv",
         ),
+        # v1.3: These are now informational only, not blocking
         "sequencing": DataSource(
-            name="Sequencing Complete", key="sequencing", required=True,
-            prompt_message="Sequencing not yet finalised. Wave times may change. Wait before generating.",
+            name="Sequencing Complete", key="sequencing", required=False,  # Changed to non-blocking
+            available=True,  # Default to True - assume complete if we have dispatch data
+            prompt_message="Sequencing status unknown. Check Dispatch Planning page if wave times seem wrong.",
             prompt_action="check_status",
         ),
         "auto_assign": DataSource(
-            name="Auto-Assign Complete", key="auto_assign", required=True,
-            prompt_message="Auto-assign not yet complete. Some routes may have no DA. Wait or manually assign.",
+            name="Auto-Assign Complete", key="auto_assign", required=False,  # Changed to non-blocking
+            available=True,  # Default to True - assume complete if we have assignment data
+            prompt_message="Auto-assign status unknown. Check Assignment Planning if some routes show UNASSIGNED.",
             prompt_action="check_status",
         ),
     }
@@ -86,9 +94,10 @@ def check_missing_data(sources: dict) -> list[dict]:
     Each item: {key, name, message, action, severity}
     """
     missing = []
-    severity_order = ["sequencing", "auto_assign", "dispatch", "assignment", "scc", "pickorder"]
+    # Only check truly required sources
+    required_order = ["dispatch", "assignment", "scc"]
 
-    for key in severity_order:
+    for key in required_order:
         src = sources.get(key)
         if src and src.required and not src.available:
             missing.append({
@@ -96,25 +105,43 @@ def check_missing_data(sources: dict) -> list[dict]:
                 "name": src.name,
                 "message": src.prompt_message,
                 "action": src.prompt_action,
-                "severity": "blocking" if key in ("sequencing", "auto_assign") else "required",
+                "severity": "required",
                 "error": src.error,
             })
+    
+    # PickOrder is optional but show as warning if missing
+    pickorder = sources.get("pickorder")
+    if pickorder and not pickorder.available:
+        missing.append({
+            "key": "pickorder",
+            "name": pickorder.name,
+            "message": pickorder.prompt_message,
+            "action": pickorder.prompt_action,
+            "severity": "optional",  # Won't block generation
+            "error": pickorder.error,
+        })
+    
     return missing
 
 
 def can_generate_plan(sources: dict) -> tuple[bool, list]:
     """
     Returns (can_generate, missing_items).
-    can_generate is True only when ALL required sources are available.
+    can_generate is True when all REQUIRED sources are available.
+    Optional sources (pickorder, sequencing, auto_assign) don't block.
     """
     missing = check_missing_data(sources)
-    return len(missing) == 0, missing
+    # Only block on required items
+    blocking = [m for m in missing if m["severity"] == "required"]
+    return len(blocking) == 0, missing
 
 
 def get_data_summary(sources: dict) -> dict:
     """Summary for dashboard header."""
-    total = sum(1 for s in sources.values() if s.required)
-    loaded = sum(1 for s in sources.values() if s.required and s.available)
+    # Only count the 3 core required sources
+    core_keys = ["dispatch", "assignment", "scc"]
+    total = len(core_keys)
+    loaded = sum(1 for k in core_keys if sources.get(k) and sources[k].available)
     return {
         "total_required": total,
         "loaded": loaded,
@@ -125,9 +152,9 @@ def get_data_summary(sources: dict) -> dict:
     }
 
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 #  DATA LOADER
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 
 class DataManager:
     """
@@ -144,7 +171,6 @@ class DataManager:
         self.scc_data = None
         self.pickorder_data = None
         self._raw_dispatch_text = None
-        self._raw_assignment_text = None
         self._raw_assignment_text = None
 
     def get_status(self) -> dict:
@@ -206,23 +232,23 @@ class DataManager:
             results["assignment"] = {"success": True, "records": self.sources["assignment"].record_count}
 
         # Fetch PickOrder CSV (auto-download via Playwright)
-        from pickorder_scraper import download_pickorder_csv
-        po_content, po_err = download_pickorder_csv(self.plan_date)
-        if po_err:
-            self.sources["pickorder"].error = (
-                po_err + " — upload manually: Dispatch Planning → bottom → Day of Ops CSV"
-            )
-            results["pickorder"] = {"success": False, "error": po_err}
-        else:
-            po_result = self.load_pickorder_from_csv(po_content.encode())
-            results["pickorder"] = po_result
+        try:
+            from pickorder_scraper import download_pickorder_csv
+            po_content, po_err = download_pickorder_csv(self.plan_date)
+            if po_err:
+                self.sources["pickorder"].error = (
+                    po_err + " — upload manually: Dispatch Planning → bottom → Day of Ops CSV"
+                )
+                results["pickorder"] = {"success": False, "error": po_err}
+            else:
+                po_result = self.load_pickorder_from_csv(po_content.encode())
+                results["pickorder"] = po_result
+        except Exception as e:
+            results["pickorder"] = {"success": False, "error": str(e)}
 
         return results
 
-
-        return results
-
-    # ── MANUAL PASTE ────────────────────────────
+    # ── MANUAL PASTE ────────────────────────────────
 
     def load_dispatch_from_paste(self, pasted_text: str) -> dict:
         """
@@ -304,28 +330,42 @@ class DataManager:
         except Exception as e:
             return {"success": False, "error": f"PickOrder parse error: {str(e)}"}
 
-    # ── READINESS FLAGS ──────────────────────────
+    # ── READINESS FLAGS ──────────────────────────────
 
     def set_sequencing_complete(self, complete: bool, unplanned: list = None):
         src = self.sources["sequencing"]
         if complete:
-            self._mark_available("sequencing", "api", 1)
+            self._mark_available("sequencing", "detected", 1)
             if unplanned:
-                src.error = f"⚠️ {len(unplanned)} unplanned: {', '.join(unplanned)}"
+                src.error = f"⚠️ {len(unplanned)} unplanned: {', '.join(unplanned[:5])}"
         else:
-            src.available = False
-            src.source_method = "none"
+            src.available = True  # Still available, just with warning
+            src.error = "Sequencing may not be finalized"
 
     def set_auto_assign_complete(self, complete: bool, unassigned_count: int = 0):
+        src = self.sources["auto_assign"]
         if complete and unassigned_count == 0:
-            self._mark_available("auto_assign", "api", 1)
+            self._mark_available("auto_assign", "detected", 1)
         elif complete and unassigned_count > 0:
-            self._mark_available("auto_assign", "api", 1)
-            self.sources["auto_assign"].error = f"⚠️ {unassigned_count} DSP routes still unassigned"
+            self._mark_available("auto_assign", "detected", 1)
+            src.error = f"⚠️ {unassigned_count} DSP routes still unassigned"
         else:
-            self.sources["auto_assign"].available = False
+            src.available = True  # Still available, just with warning
+            src.error = "Auto-assign may not be complete"
 
-    # ── INTERNAL PROCESSORS ─────────────────────
+    # ── MANUAL OVERRIDE ──────────────────────────────
+
+    def mark_sequencing_complete(self):
+        """Manual override - user confirms sequencing is done."""
+        self._mark_available("sequencing", "manual", 1)
+        return {"success": True, "message": "Sequencing marked as complete"}
+
+    def mark_auto_assign_complete(self):
+        """Manual override - user confirms auto-assign is done."""
+        self._mark_available("auto_assign", "manual", 1)
+        return {"success": True, "message": "Auto-assign marked as complete"}
+
+    # ── INTERNAL PROCESSORS ─────────────────────────
 
     def _process_dispatch_text(self, text: str):
         """Parse scraped/pasted dispatch page text into structured data."""
@@ -342,11 +382,11 @@ class DataManager:
             unplanned_count = int(unplanned_count_match.group(1)) if unplanned_count_match else len(unplanned)
 
             self.dispatch_data = data
-            self._mark_available("dispatch", "playwright" if not self._is_paste() else "paste", wave_count)
-            self.set_sequencing_complete(finalized, unplanned)
+            self._mark_available("dispatch", "paste", wave_count)
+            self.set_sequencing_complete(finalized or wave_count > 0, unplanned)  # If we have waves, assume sequencing done
 
             if unplanned_count > 0:
-                self.sources["dispatch"].error = f"⚠️ {unplanned_count} unplanned routes: {', '.join(unplanned)}"
+                self.sources["dispatch"].error = f"⚠️ {unplanned_count} unplanned routes"
 
         except Exception as e:
             self.sources["dispatch"].error = f"Parse error: {str(e)}"
@@ -358,13 +398,13 @@ class DataManager:
             data = _parse_assignment_data(text)
             route_count = len(data)
 
-            auto_assign = "Auto Assign completed" in text
+            auto_assign = "Auto Assign completed" in text or "Auto-Assign completed" in text
             dsp_unassigned_match = re.search(r"DSP Routes Not Assigned\s*\n\s*(\d+)", text)
-            dsp_unassigned = int(dsp_unassigned_match.group(1)) if dsp_unassigned_match else -1
+            dsp_unassigned = int(dsp_unassigned_match.group(1)) if dsp_unassigned_match else 0
 
             self.assignment_data = data
-            self._mark_available("assignment", "playwright" if not self._is_paste() else "paste", route_count)
-            self.set_auto_assign_complete(auto_assign, max(dsp_unassigned, 0))
+            self._mark_available("assignment", "paste", route_count)
+            self.set_auto_assign_complete(auto_assign or route_count > 0, dsp_unassigned)  # If we have routes, assume assign done
 
         except Exception as e:
             self.sources["assignment"].error = f"Parse error: {str(e)}"
@@ -377,7 +417,3 @@ class DataManager:
         src.record_count = count
         src.loaded_at = datetime.now().strftime("%H:%M")
         src.error = None
-
-    def _is_paste(self) -> bool:
-        """Heuristic — if called outside auto_fetch, it's a paste."""
-        return True  # Simplified — could track context if needed
