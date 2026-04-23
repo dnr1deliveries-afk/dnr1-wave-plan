@@ -320,6 +320,7 @@ def _build_main_waves(dispatch_data, assignment_data, scc_data, cfg, pickorder_d
     wave_num = 1
 
     for time_str in sorted(dispatch_data.keys(), key=_parse_time_str):
+        pads = dispatch_data[time_str]  # <-- This line was missing!
 
         # Guard: skip None entries, skip BK_ routes
         pad_a_raw = [r for r in pads.get("A", [])
@@ -365,9 +366,6 @@ def _build_main_waves(dispatch_data, assignment_data, scc_data, cfg, pickorder_d
 
     return waves
 
-
-def _build_cargo_bike_waves(dispatch_data, assignment_data, scc_data, cfg):
-    """Wave C — BK_ routes only, consecutive lanes, no optimisation."""
     wave_c_blocks = []
     wave_num      = 1
 

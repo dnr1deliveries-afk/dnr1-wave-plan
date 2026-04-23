@@ -1,5 +1,5 @@
 """
-app.py — DNR1 Wave Plan Tool v1.4
+app.py — DNR1 Wave Plan Tool v1.5
 Flask web app with full missing data prompting + DSP Slack integration + Excel Export.
 
 If any required data source is missing, the app:
@@ -17,6 +17,11 @@ Excel Export:
   - Download print-optimized WAVE PLAN Excel file
   - Space-efficient: only includes populated lane rows
   - Professional formatting matching yard marshal format
+
+File Caching (v1.5):
+  - Uploaded CSV files are cached to disk
+  - Survives server restarts
+  - Clear cache button in UI
 """
 
 import os
@@ -40,6 +45,10 @@ from slack_client import (
     test_dsp_webhook,
     test_all_webhooks,
     DSP_OPS_WEBHOOKS,
+)
+from file_cache import (
+    cache_file, cache_text, load_cached_file, load_cached_text,
+    get_cache_status, clear_cache, clear_all_cache, has_cached_file,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -236,6 +245,7 @@ def generate_plan():
 
 
 @app.route("/clear-plan", methods=["POST"])
+@app.route("/clear-plan", methods=["POST"])
 def clear_plan():
     """Clear the current plan and all loaded data — fresh start."""
     global _dm, _wave_statuses, _plan_cache
@@ -246,11 +256,23 @@ def clear_plan():
     return redirect(url_for("index"))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  WAVE STATUS
-# ─────────────────────────────────────────────────────────────────────────────
+@app.route("/clear-cache", methods=["POST"])
+def clear_cache_route():
+    """Clear all cached files from disk."""
+    result = clear_all_cache()
+    if result["success"]:
+        flash(f"🗑️ Cache cleared — {result['files_deleted']} files deleted", "success")
+    else:
+        flash(f"⚠️ Cache clear had errors: {result.get('errors', 'Unknown')}", "warning")
+    return redirect(url_for("index"))
 
-@app.route("/wave/<wave_label>/status", methods=["POST"])
+
+@app.route("/api/cache-status", methods=["GET"])
+def api_cache_status():
+    """Get current cache status."""
+    return jsonify(get_cache_status())
+
+
 def update_wave_status(wave_label):
     data = request.get_json() or {}
     action = data.get("action")
