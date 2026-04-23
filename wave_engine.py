@@ -332,12 +332,12 @@ def _build_cargo_bike_waves(dispatch_data, assignment_data, scc_data, cfg):
     for time_str, pads in dispatch_data.items():
         if "C" in pads:
             for route_entry in pads["C"]:
-                route_code = route_entry.get("route", "")
-                if route_code.startswith("BK_") or route_code.startswith("CB_"):
+                route_code = route_entry.get("route") or ""
+                if route_code and (route_code.startswith("BK_") or route_code.startswith("CB_")):
                     bike_routes.append({
                         "route": route_code,
-                        "dsp": route_entry.get("dsp", ""),
-                        "lane": route_entry.get("lane", ""),
+                        "dsp": route_entry.get("dsp") or "",
+                        "lane": route_entry.get("lane") or "",
                         "dispatch_time": time_str,
                     })
     
@@ -346,16 +346,15 @@ def _build_cargo_bike_waves(dispatch_data, assignment_data, scc_data, cfg):
         for pad_key in ["A", "B"]:
             if pad_key in pads:
                 for route_entry in pads[pad_key]:
-                    route_code = route_entry.get("route", "")
-                    if route_code.startswith("BK_") or route_code.startswith("CB_"):
+                    route_code = route_entry.get("route") or ""
+                    if route_code and (route_code.startswith("BK_") or route_code.startswith("CB_")):
                         # Move to cargo bike list
                         bike_routes.append({
                             "route": route_code,
-                            "dsp": route_entry.get("dsp", ""),
-                            "lane": route_entry.get("lane", ""),
+                            "dsp": route_entry.get("dsp") or "",
+                            "lane": route_entry.get("lane") or "",
                             "dispatch_time": time_str,
                         })
-    
     if not bike_routes:
         return []
     
