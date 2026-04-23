@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DNR1 Wave Plan — {{ plan_date }}</title>
+  <style>
+    :root {
+      --dark: #131921;
+      --orange: #FF9900;
+      --green: #1e8e3e;
+      --blue: #146EB4;
+      --lev: #e8f5e9;
+      --nursery: #fff3e0;
+      --rd: #fce4ec;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 11px; background: white; color: #111; }
+
+    /* ── PRINT CONTROLS (hidden on print) ── */
+    .print-controls {
+      padding: 10px 16px; background: #f0f2f5; border-bottom: 1px solid #ddd;
+      display: flex; gap: 10px; align-items: center;
+    }
+    .btn { padding: 6px 14px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; }
+    .btn-print { background: var(--dark); color: white; }
+    .btn-slack { background: #4A154B; color: white; }
+    .btn-back { background: #e0e0e0; color: #333; text-decoration: none; }
+    @media print { .print-controls { display: none; } }
+
+    /* ── PAGE HEADER ── */
+    .page-header {
+      background: var(--dark); color: white;
+      padding: 10px 16px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .page-header h1 { font-size: 16px; font-weight: 800; }
+    .page-header .meta { font-size: 10px; color: #bbb; margin-top: 2px; }
+    .page-header .summary { font-size: 11px; text-align: right; color: #ddd; }
+
+    /* ── SUMMARY ROW ── */
+    .summary-row {
+      display: flex; gap: 0; border-bottom: 2px solid var(--orange);
+      background: #f8f9fa;
+    }
+    .summary-cell {
+      flex: 1; padding: 6px 12px; border-right: 1px solid #ddd; text-align: center;
+    }
+    .summary-cell:last-child { border-right: none; }
+    .summary-val { font-size: 18px; font-weight: 800; color: var(--dark); }
+    .summary-lbl { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* ── WAVE BLOCKS ── */
+    .wave-block { page-break-inside: avoid; margin-bottom: 8px; border: 1px solid #ddd; border-radius: 4px; overflow: hidden; }
+    .wave-block-header {
+      background: var(--dark); color: white; padding: 6px 10px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .wave-block-header h2 { font-size: 13px; font-weight: 800; }
+    .wave-block-header .wh-meta { font-size: 10px; color: #bbb; }
+
+    .pads-container { display: grid; grid-template-columns: 1fr 1fr; }
+    .pad-col { padding: 6px 8px; }
+    .pad-col + .pad-col { border-left: 1px solid #eee; }
+
+    .pad-heading {
+      background: var(--dark); color: white; padding: 3px 8px; border-radius: 3px;
+      font-size: 10px; font-weight: 700; margin-bottom: 4px;
+      display: flex; justify-content: space-between;
+    }
+    .pad-timing { font-size: 9px; color: #666; margin-bottom: 4px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    th {
+      background: #1a1a1a; color: white; padding: 3px 5px;
+      text-align: left; font-size: 9px; white-space: nowrap;
+    }
+    td { padding: 3px 5px; border-bottom: 1px solid #f5f5f5; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr.lev td { background: var(--lev); }
+    tr.nursery td { background: var(--nursery); }
+    tr.rd td { background: var(--rd); }
+
+    .route-code { font-weight: 700; font-family: monospace; font-size: 10px; }
+    .dsp-chip { background: #e8f0fe; color: #1967d2; padding: 1px 4px; border-radius: 2px; font-size: 9px; font-weight: 700; }
+    .cart-val { font-weight: 800; }
+    .note-tag { padding: 1px 4px; border-radius: 2px; font-size: 8px; font-weight: 700; }
+    .note-lev { background: #c8e6c9; color: #1b5e20; }
+    .note-nursery { background: #ffe0b2; color: #bf360c; }
+    .note-rd { background: #fce4ec; color: #880e4f; }
+    .lane-num { color: #666; font-size: 9px; }
+
+    /* ── WAVE C ── */
+    .wave-c-block { page-break-inside: avoid; margin-bottom: 8px; border: 1px solid #3949ab; border-radius: 4px; overflow: hidden; }
+    .wave-c-header { background: #1a237e; color: white; padding: 6px 10px; display: flex; justify-content: space-between; }
+    .wave-c-header h2 { font-size: 12px; font-weight: 800; }
+    .wave-c-table { padding: 6px 8px; }
+
+    /* ── STATUS BOXES (write-in for paper) ── */
+    .status-boxes { display: flex; gap: 16px; padding: 4px 10px; background: #f9f9f9; border-top: 1px solid #eee; font-size: 9px; }
+    .status-box { display: flex; align-items: center; gap: 4px; }
+    .write-box { border: 1px solid #999; width: 45px; height: 14px; display: inline-block; border-radius: 2px; }
+
+    /* ── LEGEND ── */
+    .legend { display: flex; gap: 12px; padding: 6px 16px; border-top: 1px solid #ddd; font-size: 9px; align-items: center; }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #ccc; }
+
+    /* ── FOOTER ── */
+    .page-footer { padding: 6px 16px; border-top: 1px solid #ddd; font-size: 9px; color: #999; display: flex; justify-content: space-between; }
+
+    /* ── SECTION LABELS ── */
+    .section-label { font-size: 11px; font-weight: 800; color: #333; padding: 8px 0 4px; border-bottom: 2px solid var(--orange); margin-bottom: 6px; }
+
+    /* ── PRINT PAGE BREAKS ── */
+    @media print {
+      body { font-size: 10px; }
+      .wave-block { page-break-inside: avoid; margin-bottom: 6px; }
+      .wave-c-block { page-break-inside: avoid; }
+      @page { margin: 10mm; size: A4 landscape; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- PRINT CONTROLS -->
+<div class="print-controls">
+  <a href="/" class="btn btn-back">← Back to Dashboard</a>
+  <button class="btn btn-print" onclick="window.print()">🖨️ Print</button>
+  <button class="btn btn-slack" onclick="sendToSlack()">📤 Send to Slack</button>
+  <span style="font-size:11px;color:#666;margin-left:auto;">
+    Tip: Use browser Print → Save as PDF for Slack attachment
+  </span>
+</div>
+
+{% if wave_plan %}
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div>
+    <h1>🚛 DNR1 Wave Plan — {{ station }}</h1>
+    <div class="meta">{{ plan_date }}</div>
+  </div>
+  <div class="summary">
+    {{ wave_plan.summary.total_routes }} routes &nbsp;|&nbsp;
+    {{ wave_plan.summary.total_waves }} waves &nbsp;|&nbsp;
+    {{ wave_plan.summary.total_carts }} carts &nbsp;|&nbsp;
+    {{ wave_plan.summary.cargo_bike_routes }} cargo bikes
+  </div>
+</div>
+
+<!-- SUMMARY ROW -->
+<div class="summary-row">
+  <div class="summary-cell">
+    <div class="summary-val">{{ wave_plan.summary.total_routes }}</div>
+    <div class="summary-lbl">Total Routes</div>
+  </div>
+  <div class="summary-cell">
+    <div class="summary-val">{{ wave_plan.summary.van_routes }}</div>
+    <div class="summary-lbl">Van Routes</div>
+  </div>
+  <div class="summary-cell">
+    <div class="summary-val">{{ wave_plan.summary.cargo_bike_routes }}</div>
+    <div class="summary-lbl">Cargo Bikes</div>
+  </div>
+  <div class="summary-cell">
+    <div class="summary-val">{{ wave_plan.summary.total_carts }}</div>
+    <div class="summary-lbl">Total Carts</div>
+  </div>
+  <div class="summary-cell">
+    <div class="summary-val">{{ wave_plan.summary.total_waves }}</div>
+    <div class="summary-lbl">Waves</div>
+  </div>
+  {% for dsp, cnt in wave_plan.summary.dsp_breakdown.items() %}
+  <div class="summary-cell">
+    <div class="summary-val" style="font-size:13px;">{{ cnt }}</div>
+    <div class="summary-lbl">{{ dsp }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- LEGEND -->
+<div class="legend">
+  <strong style="font-size:9px;">KEY:</strong>
+  <div class="legend-item"><div class="legend-swatch" style="background:#e8f5e9;"></div> Low Emission Vehicle</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#fff3e0;"></div> Nursery Route</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#fce4ec;"></div> Remote Debrief</div>
+  <div class="legend-item" style="margin-left:auto;"><strong>Carts = Bags + OVs</strong></div>
+</div>
+
+<!-- MAIN WAVES -->
+<div style="padding: 6px 8px;">
+
+{% if wave_plan.waves %}
+<div class="section-label">📦 Dispatch Waves — Pads A & B</div>
+
+{% for wave in wave_plan.waves %}
+<div class="wave-block">
+  <div class="wave-block-header">
+    <div>
+      <h2>{{ wave.wave_label }}</h2>
+      <div class="wh-meta">
+        Pad A: {{ wave.pad_a.wave_time }} &nbsp;|&nbsp;
+        Pad B: {{ wave.pad_b.wave_time }} &nbsp;|&nbsp;
+        {{ wave.pad_a.total_routes + wave.pad_b.total_routes }} routes &nbsp;|&nbsp;
+        {{ wave.pad_a.total_carts + wave.pad_b.total_carts }} carts
+        &nbsp;|&nbsp; DSPs: {{ (wave.pad_a.dsps + wave.pad_b.dsps) | unique | join(', ') }}
+      </div>
+    </div>
+    <div style="font-size:10px;color:#aaa;">
+      {% if wave.status == 'cleared' %}✅ CLEARED {{ wave.cleared_at }}
+      {% elif wave.status == 'dispatched' %}🚛 DISPATCHED {{ wave.swiped_at }}
+      {% elif wave.status == 'staging' %}⏳ STAGING
+      {% else %}🕐 UPCOMING{% endif %}
+    </div>
+  </div>
+
+  <div class="pads-container">
+    <!-- PAD A -->
+    <div class="pad-col">
+      <div class="pad-heading">
+        <span>PAD A &nbsp;▸&nbsp; {{ wave.pad_a.wave_time }}</span>
+        <span>{{ wave.pad_a.total_routes }} routes / {{ wave.pad_a.total_carts }} carts</span>
+      </div>
+      <div class="pad-timing">
+        Arrive: {{ wave.pad_a.first_entrance }} &nbsp;|&nbsp;
+        Last in: {{ wave.pad_a.last_entrance }} &nbsp;|&nbsp;
+        Exit by: {{ wave.pad_a.last_exit }}
+      </div>
+      {% if wave.pad_a.routes %}
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Lane</th><th>DSP</th><th>Route</th><th>Type</th><th>Carts</th><th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in wave.pad_a.routes %}
+          <tr class="{% if r.is_low_emission %}lev{% elif r.is_nursery %}nursery{% elif r.is_remote_debrief %}rd{% endif %}">
+            <td class="lane-num">{{ loop.index }}</td>
+            <td><strong>{{ r.lane }}</strong></td>
+            <td><span class="dsp-chip">{{ r.dsp }}</span></td>
+            <td class="route-code">{{ r.route }}</td>
+            <td>{{ r.service_short }}</td>
+            <td>
+              {% if r.total_carts > 0 %}
+                <span class="cart-val">{{ r.total_carts }}</span>
+                <span style="color:#999;font-size:8px;">({{ r.bags }}+{{ r.ovs }})</span>
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if r.is_low_emission %}<span class="note-tag note-lev">LEV</span>{% endif %}
+              {% if r.is_nursery %}<span class="note-tag note-nursery">NR</span>{% endif %}
+              {% if r.is_remote_debrief %}<span class="note-tag note-rd">RD</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="color:#bbb;padding:4px;font-size:9px;">No routes</div>
+      {% endif %}
+    </div>
+
+    <!-- PAD B -->
+    <div class="pad-col">
+      <div class="pad-heading">
+        <span>PAD B &nbsp;▸&nbsp; {{ wave.pad_b.wave_time }}</span>
+        <span>{{ wave.pad_b.total_routes }} routes / {{ wave.pad_b.total_carts }} carts</span>
+      </div>
+      <div class="pad-timing">
+        Arrive: {{ wave.pad_b.first_entrance }} &nbsp;|&nbsp;
+        Last in: {{ wave.pad_b.last_entrance }} &nbsp;|&nbsp;
+        Exit by: {{ wave.pad_b.last_exit }}
+      </div>
+      {% if wave.pad_b.routes %}
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Lane</th><th>DSP</th><th>Route</th><th>Type</th><th>Carts</th><th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in wave.pad_b.routes %}
+          <tr class="{% if r.is_low_emission %}lev{% elif r.is_nursery %}nursery{% elif r.is_remote_debrief %}rd{% endif %}">
+            <td class="lane-num">{{ loop.index }}</td>
+            <td><strong>{{ r.lane }}</strong></td>
+            <td><span class="dsp-chip">{{ r.dsp }}</span></td>
+            <td class="route-code">{{ r.route }}</td>
+            <td>{{ r.service_short }}</td>
+            <td>
+              {% if r.total_carts > 0 %}
+                <span class="cart-val">{{ r.total_carts }}</span>
+                <span style="color:#999;font-size:8px;">({{ r.bags }}+{{ r.ovs }})</span>
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if r.is_low_emission %}<span class="note-tag note-lev">LEV</span>{% endif %}
+              {% if r.is_nursery %}<span class="note-tag note-nursery">NR</span>{% endif %}
+              {% if r.is_remote_debrief %}<span class="note-tag note-rd">RD</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="color:#bbb;padding:4px;font-size:9px;">No routes</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- WRITE-IN STATUS ROW -->
+  <div class="status-boxes">
+    <div class="status-box">WAVE CLEAR: <span class="write-box"></span></div>
+    <div class="status-box">PAD A SWIPED: <span class="write-box"></span></div>
+    <div class="status-box">PAD B SWIPED: <span class="write-box"></span></div>
+    <div class="status-box" style="margin-left:auto;color:#bbb;">
+      {% if wave.cleared_at %}Cleared: {{ wave.cleared_at }}{% endif %}
+      {% if wave.swiped_at %} | Swiped: {{ wave.swiped_at }}{% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- WAVE C — CARGO BIKES -->
+{% if wave_plan.wave_c %}
+<div class="section-label" style="margin-top:10px;">🚲 Wave C — Cargo Bikes (Ironhide)</div>
+{% for wc in wave_plan.wave_c %}
+<div class="wave-c-block">
+  <div class="wave-c-header">
+    <h2>{{ wc.wave_label }} — Dispatch: {{ wc.wave_time }}</h2>
+    <div style="font-size:10px;color:#bbb;">
+      {{ wc.total_routes }} bikes &nbsp;|&nbsp;
+      Arrive: {{ wc.first_entrance }} &nbsp;|&nbsp;
+      Last in: {{ wc.last_entrance }} &nbsp;|&nbsp;
+      Exit by: {{ wc.last_exit }}
+    </div>
+  </div>
+  <div class="wave-c-table">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Lane</th><th>DSP</th><th>Route</th><th>Service Type</th><th>Carts</th><th>Rider ID</th></tr>
+      </thead>
+      <tbody>
+        {% for r in wc.routes %}
+        <tr>
+          <td class="lane-num">{{ loop.index }}</td>
+          <td><strong>{{ r.lane }}</strong></td>
+          <td><span class="dsp-chip">{{ r.dsp }}</span></td>
+          <td class="route-code">{{ r.route }}</td>
+          <td>{{ r.service_short }}</td>
+          <td>{% if r.total_carts > 0 %}<span class="cart-val">{{ r.total_carts }}</span>{% else %}—{% endif %}</td>
+          <td style="font-family:monospace;font-size:9px;color:#555;">{{ r.da_id[:14] if r.da_id != 'UNASSIGNED' else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="status-boxes" style="margin-top:4px;">
+      <div class="status-box">WAVE CLEAR: <span class="write-box"></span></div>
+      <div class="status-box">SWIPED: <span class="write-box"></span></div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+</div><!-- /padding wrapper -->
+
+<!-- PAGE FOOTER -->
+<div class="page-footer">
+  <span>DNR1 — {{ station }} &nbsp;|&nbsp; {{ plan_date }}</span>
+  <span>Generated by DNR1 Wave Plan Tool &nbsp;|&nbsp; AM Operations</span>
+  <span id="print-time"></span>
+</div>
+
+{% else %}
+<div style="text-align:center;padding:60px;color:#999;">
+  <h2>No wave plan loaded</h2>
+  <p><a href="/">← Return to dashboard</a></p>
+</div>
+{% endif %}
+
+<script>
+document.getElementById('print-time').textContent = 'Printed: ' + new Date().toLocaleTimeString('en-GB');
+
+function sendToSlack() {
+  fetch('/api/slack/test', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => alert(d.success ? '✅ Sent to Slack!' : '❌ Slack failed — check webhook URL'));
+}
+</script>
+</body>
+</html>

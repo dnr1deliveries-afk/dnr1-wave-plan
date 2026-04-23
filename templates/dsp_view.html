@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ dsp_code }} Wave Plan — {{ plan_date }}</title>
+  <style>
+    :root { --dark: #131921; --orange: #FF9900; --green: #1e8e3e; --blue: #146EB4; --grey: #5f6368; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; font-size: 13px; }
+    .header { background: var(--dark); color: white; padding: 14px 20px; }
+    .header h1 { font-size: 20px; font-weight: 800; }
+    .header .sub { color: #aaa; font-size: 12px; margin-top: 4px; }
+    .main { padding: 20px; max-width: 900px; margin: 0 auto; }
+    .wave-card { background: white; border-radius: 8px; margin-bottom: 16px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+    .wave-head { background: var(--dark); color: white; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+    .wave-head h2 { font-size: 16px; }
+    .wave-head .timing { font-size: 11px; color: #bbb; margin-top: 3px; }
+    .pad-label { background: var(--orange); color: #111; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 800; }
+    .pad-section { padding: 12px 16px; }
+    .pad-title { font-weight: 700; font-size: 12px; margin-bottom: 8px; color: var(--grey); }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f1f3f4; padding: 6px 8px; text-align: left; font-size: 11px; color: var(--grey); }
+    td { padding: 8px; border-bottom: 1px solid #f0f0f0; font-size: 12px; }
+    .route-code { font-weight: 700; font-family: monospace; font-size: 13px; color: var(--dark); }
+    .lane-tag { background: #e8f0fe; color: #1967d2; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 11px; }
+    .cart-num { font-weight: 800; font-size: 15px; color: var(--dark); }
+    .notes-lev { background: #e8f5e9; color: var(--green); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+    .notes-nursery { background: #fff3e0; color: #b06000; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+    .no-routes { color: #bbb; font-size: 12px; padding: 8px 0; }
+    .status-cleared { border-left: 4px solid var(--green); }
+    .status-staging { border-left: 4px solid var(--orange); }
+    .status-dispatched { border-left: 4px solid var(--blue); }
+    .empty-msg { text-align: center; padding: 60px 20px; color: var(--grey); }
+    .refresh-bar { background: white; border-bottom: 1px solid #eee; padding: 8px 20px; font-size: 11px; color: var(--grey); display: flex; justify-content: space-between; align-items: center; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <h1>{{ dsp_code }} — Wave Plan</h1>
+  <div class="sub">{{ plan_date }} &nbsp;|&nbsp; DNR1 Delivery Station, Norwich</div>
+</div>
+<div class="refresh-bar">
+  <span>{% if last_refreshed %}Last updated: {{ last_refreshed }}{% endif %}</span>
+  <a href="javascript:location.reload()" style="color: #146EB4; text-decoration: none; font-size: 11px;">↻ Refresh</a>
+</div>
+<div class="main">
+
+{% if waves %}
+  {% for wave in waves %}
+  <div class="wave-card status-{{ wave.status }}">
+    <div class="wave-head">
+      <div>
+        <h2>{{ wave.wave_label }}</h2>
+        <div class="timing">
+          Pad A dispatch: <strong>{{ wave.pad_a.wave_time }}</strong> &nbsp;|&nbsp;
+          Pad B dispatch: <strong>{{ wave.pad_b.wave_time }}</strong>
+        </div>
+      </div>
+      <div>
+        {% if wave.status == 'cleared' %}
+          <span style="background:#1e8e3e;color:white;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:700;">✅ CLEARED</span>
+        {% elif wave.status == 'staging' %}
+          <span style="background:#f9ab00;color:#111;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:700;">⏳ STAGING</span>
+        {% elif wave.status == 'dispatched' %}
+          <span style="background:#146EB4;color:white;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:700;">🚛 DISPATCHED</span>
+        {% else %}
+          <span style="background:#5f6368;color:white;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:700;">🕐 UPCOMING</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if wave.pad_a.routes %}
+    <div class="pad-section">
+      <div class="pad-title">📍 PAD A — Arrive by {{ wave.pad_a.first_entrance }}</div>
+      <table>
+        <thead><tr><th>Lane</th><th>Route</th><th>Service Type</th><th>Carts</th><th>Notes</th></tr></thead>
+        <tbody>
+          {% for r in wave.pad_a.routes %}
+          <tr>
+            <td><span class="lane-tag">{{ r.lane }}</span></td>
+            <td class="route-code">{{ r.route }}</td>
+            <td>{{ r.service_type }}</td>
+            <td><span class="cart-num">{{ r.total_carts if r.total_carts > 0 else '—' }}</span>
+              {% if r.total_carts > 0 %}<br><span style="font-size:10px;color:#999;">{{ r.bags }} bags + {{ r.ovs }} OVs</span>{% endif %}
+            </td>
+            <td>
+              {% if r.is_low_emission %}<span class="notes-lev">LEV</span>{% endif %}
+              {% if r.is_nursery %}<span class="notes-nursery">Nursery</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    {% if wave.pad_b.routes %}
+    <div class="pad-section" style="border-top: 1px solid #f0f0f0;">
+      <div class="pad-title">📍 PAD B — Arrive by {{ wave.pad_b.first_entrance }}</div>
+      <table>
+        <thead><tr><th>Lane</th><th>Route</th><th>Service Type</th><th>Carts</th><th>Notes</th></tr></thead>
+        <tbody>
+          {% for r in wave.pad_b.routes %}
+          <tr>
+            <td><span class="lane-tag">{{ r.lane }}</span></td>
+            <td class="route-code">{{ r.route }}</td>
+            <td>{{ r.service_type }}</td>
+            <td><span class="cart-num">{{ r.total_carts if r.total_carts > 0 else '—' }}</span>
+              {% if r.total_carts > 0 %}<br><span style="font-size:10px;color:#999;">{{ r.bags }} bags + {{ r.ovs }} OVs</span>{% endif %}
+            </td>
+            <td>
+              {% if r.is_low_emission %}<span class="notes-lev">LEV</span>{% endif %}
+              {% if r.is_nursery %}<span class="notes-nursery">Nursery</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+{% else %}
+  <div class="empty-msg">
+    <h3 style="font-size:18px;margin-bottom:8px;">No routes found for {{ dsp_code }}</h3>
+    <p>Check back once the wave plan has been generated, or contact your AM.</p>
+  </div>
+{% endif %}
+
+</div>
+</body>
+</html>

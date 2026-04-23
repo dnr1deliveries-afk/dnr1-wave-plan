@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+*.txt
+!requirements.txt
+
+# Temp files
+temp/
+*.xlsx
+~$*.xlsx
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug/Test files
+_*.py
+test_*.py
+debug_*.py
+*.backup
+
+# Status/Cache
+status.json
+app_log.txt

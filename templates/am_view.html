@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DNR1 Wave Plan — {{ plan_date }}</title>
+  <style>
+    :root {
+      --orange: #FF9900; --dark: #131921; --blue: #146EB4;
+      --green: #1e8e3e; --red: #c5221f; --yellow: #f9ab00;
+      --grey: #5f6368; --border: #dee2e6; --light: #f8f9fa;
+      --lev: #e8f5e9; --nursery: #fff3e0; --rd: #fce4ec;
+      --paired: #e8f0fe; --over: #fce8e6; --solo: #f8f9fa;
+      --cap-full: #c5221f; --cap-hi: #f9ab00; --cap-ok: #1e8e3e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; font-size: 13px; }
+
+    /* ── HEADER ── */
+    .header { background: var(--dark); color: white; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+    .header h1 { font-size: 18px; font-weight: 800; }
+    .header .meta { font-size: 11px; color: #aaa; margin-top: 2px; }
+    .header-right { display: flex; gap: 8px; align-items: center; }
+    .btn { padding: 6px 14px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
+    .btn-primary { background: var(--orange); color: #111; }
+    .btn-dark { background: #2d3748; color: white; }
+    .btn-green { background: var(--green); color: white; }
+    .btn-blue { background: var(--blue); color: white; }
+    .btn-red { background: var(--red); color: white; }
+    .btn-sm { padding: 4px 10px; font-size: 11px; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── STATUS BAR ── */
+    .status-bar { background: white; border-bottom: 2px solid var(--border); padding: 8px 20px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+    .status-pill { display: flex; align-items: center; gap: 5px; font-size: 11px; padding: 3px 8px; border-radius: 12px; }
+    .pill-ok   { background: #e6f4ea; color: var(--green); }
+    .pill-warn { background: #fef7e0; color: #b06000; }
+    .pill-miss { background: #fce8e6; color: var(--red); }
+    .pill-grey { background: #f1f3f4; color: var(--grey); }
+    .status-bar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+    .main { padding: 16px 20px; max-width: 1600px; }
+
+    /* ── FLASH ── */
+    .flash { padding: 10px 16px; border-radius: 6px; margin-bottom: 10px; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+    .flash-success { background: #e6f4ea; color: var(--green); border: 1px solid #c3e6cb; }
+    .flash-error   { background: #fce8e6; color: var(--red); border: 1px solid #f5c6cb; }
+    .flash-warning { background: #fef7e0; color: #b06000; border: 1px solid #ffeeba; }
+
+    /* ── MISSING DATA PANEL ── */
+    .missing-panel { background: white; border: 2px solid var(--red); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+    .missing-panel-header { background: var(--red); color: white; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; }
+    .missing-panel-header h2 { font-size: 14px; font-weight: 800; }
+    .missing-items { padding: 0; }
+    .missing-item { padding: 12px 16px; border-bottom: 1px solid #fce8e6; display: flex; align-items: flex-start; gap: 12px; }
+    .missing-item:last-child { border-bottom: none; }
+    .missing-icon { font-size: 20px; flex-shrink: 0; margin-top: 2px; }
+    .missing-body { flex: 1; }
+    .missing-title { font-weight: 700; font-size: 13px; color: var(--dark); margin-bottom: 3px; }
+    .missing-msg { font-size: 12px; color: #555; line-height: 1.5; }
+    .missing-err { font-size: 11px; color: var(--red); margin-top: 4px; font-style: italic; }
+    .missing-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+    /* ── MODALS ── */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.5); z-index: 200; justify-content: center; align-items: center; }
+    .modal-overlay.active { display: flex; }
+    .modal { background: white; border-radius: 8px; padding: 20px; max-width: 600px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,.3); }
+    .modal h3 { font-size: 15px; margin-bottom: 8px; }
+    .modal p { font-size: 12px; color: var(--grey); margin-bottom: 12px; line-height: 1.5; }
+    .modal textarea { width: 100%; height: 140px; border: 1px solid var(--border); border-radius: 4px; padding: 8px; font-size: 11px; font-family: monospace; resize: vertical; }
+    .modal-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+    .modal-close { position: absolute; top: 12px; right: 16px; font-size: 18px; cursor: pointer; color: var(--grey); background: none; border: none; }
+
+    /* ── SUMMARY CARDS ── */
+    .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .card { background: white; border-radius: 8px; padding: 12px 16px; min-width: 110px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    .card-val { font-size: 26px; font-weight: 800; color: var(--dark); }
+    .card-lbl { font-size: 10px; color: var(--grey); margin-top: 2px; text-transform: uppercase; letter-spacing: .3px; }
+    .card-orange { border-top: 3px solid var(--orange); }
+    .card-blue   { border-top: 3px solid var(--blue); }
+    .card-green  { border-top: 3px solid var(--green); }
+    .card-red    { border-top: 3px solid var(--red); }
+
+    /* ── OPTIMISATION SUMMARY PANEL ── */
+    .opt-panel { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+    .opt-panel-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .opt-panel-hdr h3 { font-size: 13px; font-weight: 800; color: var(--dark); display: flex; align-items: center; gap: 6px; }
+    .opt-stats { display: flex; gap: 20px; flex-wrap: wrap; }
+    .opt-stat { text-align: center; }
+    .opt-stat-val { font-size: 22px; font-weight: 800; }
+    .opt-stat-lbl { font-size: 10px; color: var(--grey); text-transform: uppercase; }
+    .opt-stat-green { color: var(--green); }
+    .opt-stat-yellow { color: #b06000; }
+    .opt-stat-red { color: var(--red); }
+    .opt-stat-blue { color: var(--blue); }
+
+    .opt-legend { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--grey); }
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+    /* ── OVER-CAPACITY WARNING BANNER ── */
+    .overcap-banner { background: #fce8e6; border: 1px solid #f5c6cb; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; }
+    .overcap-banner strong { color: var(--red); }
+    .overcap-list { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .overcap-chip { background: var(--red); color: white; padding: 2px 7px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+
+    /* ── WAVE GRID ── */
+    .wave-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+    @media (max-width: 1100px) { .wave-grid { grid-template-columns: 1fr; } }
+    .wave-block { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); overflow: hidden; }
+    .wave-hdr { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid transparent; }
+    .wave-hdr.s-not_started { background: #f8f9fa; border-color: #dee2e6; }
+    .wave-hdr.s-staging      { background: #fef7e0; border-color: var(--yellow); }
+    .wave-hdr.s-cleared      { background: #e6f4ea; border-color: var(--green); }
+    .wave-hdr.s-dispatched   { background: #e8f0fe; border-color: var(--blue); }
+    .wave-title { font-size: 14px; font-weight: 800; }
+    .wave-meta  { font-size: 11px; color: var(--grey); margin-top: 2px; }
+    .wave-btns  { display: flex; gap: 5px; }
+
+    /* ── WAVE PAIR BADGE ── */
+    .wave-pair-badge { display: inline-flex; align-items: center; gap: 4px; background: #e8f0fe; color: #1967d2; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; margin-left: 8px; }
+
+    .pads { display: grid; grid-template-columns: 1fr 1fr; }
+    .pad { padding: 8px 10px; }
+    .pad + .pad { border-left: 1px solid #f0f0f0; }
+    .pad-hdr { background: var(--dark); color: white; padding: 4px 8px; border-radius: 4px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; font-size: 10px; font-weight: 700; }
+    .pad-timing { font-size: 10px; color: var(--grey); margin-bottom: 5px; }
+
+    /* ── LANE CAPACITY BAR ── */
+    .lane-cap-wrap { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+    .lane-cap-bar { flex: 1; height: 5px; background: #e9ecef; border-radius: 3px; overflow: hidden; }
+    .lane-cap-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+    .cap-ok   { background: var(--cap-ok); }
+    .cap-hi   { background: var(--cap-hi); }
+    .cap-full { background: var(--cap-full); }
+    .lane-cap-lbl { font-size: 9px; color: var(--grey); white-space: nowrap; }
+
+    /* ── TABLE ── */
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th { background: #f1f3f4; padding: 3px 5px; text-align: left; font-size: 10px; color: var(--grey); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    td { padding: 3px 5px; border-bottom: 1px solid #f9f9f9; vertical-align: middle; }
+    tr:hover td { background: rgba(0,0,0,.02); }
+
+    /* ── ROW STATES ── */
+    tr.lev     td { background: var(--lev); }
+    tr.nursery td { background: var(--nursery); }
+    tr.rd      td { background: var(--rd); }
+    tr.paired  td { background: var(--paired); }
+    tr.overcap td { background: var(--over); }
+
+    /* ── CELL STYLES ── */
+    .rc { font-weight: 700; font-family: monospace; font-size: 11px; }
+    .dsp-chip { background: #e8f0fe; color: #1967d2; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: 700; }
+    .cart-val { font-weight: 800; }
+    .no-cart { color: #ccc; }
+    .lane-num { font-weight: 800; font-family: monospace; font-size: 12px; }
+
+    /* ── BADGES ── */
+    .badge { padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+    .badge-lev   { background: #e8f5e9; color: #1e8e3e; }
+    .badge-nr    { background: #fff3e0; color: #b06000; }
+    .badge-rd    { background: #fce4ec; color: #c62828; }
+    .badge-pair  { background: #e8f0fe; color: #1967d2; }
+    .badge-solo  { background: #f1f3f4; color: #5f6368; }
+    .badge-over  { background: #c5221f; color: white; }
+
+    /* ── CAPACITY CELL ── */
+    .cap-cell { display: flex; align-items: center; gap: 4px; }
+    .cap-pip  { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .cap-pip.ok   { background: var(--cap-ok); }
+    .cap-pip.hi   { background: var(--cap-hi); }
+    .cap-pip.full { background: var(--cap-full); }
+
+    /* ── SHARES-LANE INDICATOR ── */
+    .shares-cell { font-size: 10px; color: #1967d2; font-weight: 600; }
+    .shares-cell .route-ref { font-family: monospace; }
+
+    /* ── WAVE C ── */
+    .wave-c-block { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); margin-bottom: 14px; overflow: hidden; }
+    .wave-c-hdr { background: #1a237e; color: white; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; }
+
+    /* ── MISC ── */
+    .section-lbl { font-size: 13px; font-weight: 800; color: #333; margin: 14px 0 8px; display: flex; align-items: center; gap: 8px; }
+    .no-plan { text-align: center; padding: 50px 20px; color: var(--grey); }
+    .no-plan h3 { font-size: 16px; margin-bottom: 8px; }
+
+    .scc-bar { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .scc-bar label { font-size: 12px; font-weight: 700; }
+    .scc-loaded  { font-size: 11px; color: var(--green); font-weight: 600; }
+    .scc-missing { font-size: 11px; color: var(--grey); }
+
+    .dsp-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .dsp-card { background: white; border-radius: 6px; padding: 8px 12px; font-size: 11px; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    .dsp-name { font-weight: 700; }
+    .dsp-cnt  { color: var(--grey); }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div>
+    <h1>🚛 DNR1 Wave Plan</h1>
+    <div class="meta">{{ plan_date }} &nbsp;|&nbsp; AM Operations
+      {% if built_at %}&nbsp;|&nbsp; Built: {{ built_at }}{% endif %}
+      {% if wave_plan and wave_plan.optimisation %}
+        &nbsp;|&nbsp;
+        <span style="color:#FF9900;font-weight:700;">
+          🔧 {{ wave_plan.optimisation.paired_routes }} routes paired &middot;
+          {{ wave_plan.optimisation.avg_utilisation }}% avg utilisation
+        </span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="header-right">
+    {% if wave_plan %}
+    <a href="/export/wave-plan" class="btn btn-green btn-sm" title="Download print-optimized Excel file">📄 Excel</a>
+    <a href="/wave-print" target="_blank" class="btn btn-dark btn-sm">🖨 Print</a>
+    <button class="btn btn-dark btn-sm" onclick="sendSlack()">📤 Slack</button>
+    {% endif %}
+    <form action="/clear-plan" method="post" style="display:inline;" onsubmit="return confirm('Clear all data and start fresh?')">
+      <button type="submit" class="btn btn-red btn-sm">🗑️ Clear</button>
+    </form>
+  </div>
+  </div>
+</div>
+
+<!-- DATA STATUS BAR -->
+<div class="status-bar">
+  {% for key, src in status.sources.items() %}
+  <div class="status-pill {% if src.available %}pill-ok{% else %}pill-miss{% endif %}">
+    {{ '✅' if src.available else '❌' }}
+    {{ src.name }}
+    {% if src.available and src.record_count %}
+      <span style="opacity:.7;">({{ src.record_count }})</span>
+    {% endif %}
+    {% if src.available and src.loaded_at %}
+      <span style="opacity:.6;font-size:10px;">{{ src.loaded_at }}</span>
+    {% endif %}
+    {% if src.error %}
+      <span style="color:#f9ab00;" title="{{ src.error }}">⚠️</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+  <div class="status-bar-right">
+    <span class="status-pill {% if status.summary.ready %}pill-ok{% else %}pill-warn{% endif %}" style="font-weight:700;font-size:12px;">
+      {{ '🟢 READY' if status.summary.ready else '⏳ ' + status.summary.status_text }}
+    </span>
+    <button class="btn btn-dark btn-sm" onclick="pollStatus()">↻ Check</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- FLASH MESSAGES -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+    <div class="flash flash-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <!-- ══ MISSING DATA PANEL ══ -->
+  {% if missing %}
+  <div class="missing-panel">
+    <div class="missing-panel-header">
+      <h2>⚠️ Action Required — {{ missing|length }} data source{{ 's' if missing|length > 1 }} needed before wave plan can be generated</h2>
+      <span style="font-size:11px;opacity:.8;">Resolve all items below to unlock plan generation</span>
+    </div>
+    <div class="missing-items">
+      {% for item in missing %}
+      <div class="missing-item">
+        <div class="missing-icon">
+          {% if item.severity == 'blocking' %}🚫{% else %}📥{% endif %}
+        </div>
+        <div class="missing-body">
+          <div class="missing-title">
+            {{ item.name }}
+            {% if item.severity == 'blocking' %}
+              <span style="background:#c5221f;color:white;padding:1px 6px;border-radius:10px;font-size:10px;margin-left:6px;">BLOCKING</span>
+            {% else %}
+              <span style="background:#5f6368;color:white;padding:1px 6px;border-radius:10px;font-size:10px;margin-left:6px;">REQUIRED</span>
+            {% endif %}
+          </div>
+          <div class="missing-msg">{{ item.message }}</div>
+          {% if item.error %}
+          <div class="missing-err">Last error: {{ item.error }}</div>
+          {% endif %}
+          <div class="missing-actions">
+            {% if item.action == 'auto_fetch' %}
+              <form action="/fetch-all" method="post" style="display:inline;">
+                <button type="submit" class="btn btn-blue btn-sm">🤖 Auto-fetch (Playwright)</button>
+              </form>
+              <button class="btn btn-dark btn-sm" onclick="showModal('modal-{{ item.key }}')">📋 Paste manually</button>
+            {% elif item.action == 'upload_csv' %}
+              <button class="btn btn-primary btn-sm" onclick="document.getElementById('scc-upload-input').click()">📤 Upload SCC CSV</button>
+            {% elif item.action == 'upload_pickorder' %}
+              <button class="btn btn-primary btn-sm" onclick="document.getElementById('pickorder-upload-input').click()">📤 Upload PickOrder CSV</button>
+            {% elif item.action == 'check_status' %}
+              <button class="btn btn-dark btn-sm" onclick="pollStatus()">🔄 Re-check status</button>
+              <a href="https://eu.dispatch.planning.last-mile.a2z.com/dispatch-planning/DNR1/761553f5-9fc1-4cef-8815-b974bc63f0a9/{{ today }}?laborType=DSP" target="_blank" class="btn btn-blue btn-sm">🔗 Open Planning Portal</a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if missing|length > 1 %}
+  <div style="margin-bottom:16px;">
+    <form action="/fetch-all" method="post" style="display:inline;">
+      <button type="submit" class="btn btn-primary" style="font-size:13px;padding:10px 20px;">
+        🤖 Auto-fetch all missing data
+      </button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% else %}
+  {% if not wave_plan %}
+  <div style="background:white;border:2px solid var(--green);border-radius:8px;padding:16px;margin-bottom:16px;display:flex;align-items:center;gap:16px;">
+    <div style="font-size:24px;">✅</div>
+    <div style="flex:1;">
+      <div style="font-weight:700;font-size:14px;color:var(--green);">All data sources loaded — ready to generate</div>
+      <div style="font-size:12px;color:var(--grey);margin-top:3px;">Dispatch plan, assignment data, SCC carts and PickOrder are all present.</div>
+    </div>
+    <form action="/generate-plan" method="post">
+      <button type="submit" class="btn btn-primary" style="font-size:13px;padding:10px 20px;">🚛 Generate Wave Plan</button>
+    </form>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <!-- ══ SCC + PICKORDER UPLOAD BAR ══ -->
+  <div class="scc-bar">
+    <label>📦 SCC Pick Export:</label>
+    <form action="/upload-scc" method="post" enctype="multipart/form-data" style="display:flex;align-items:center;gap:8px;">
+      <input type="file" name="scc_file" accept=".csv" id="scc-upload-input" style="font-size:11px;" onchange="this.form.submit()">
+    </form>
+    {% set scc_src = status.sources.scc %}
+    {% if scc_src.available %}
+    <span class="scc-loaded">✅ {{ scc_src.record_count }} routes / {{ scc_src.loaded_at }}</span>
+    {% else %}
+    <span class="scc-missing">No SCC — cart counts = 0</span>
+    {% endif %}
+
+    <div style="width:1px;background:#ddd;height:24px;margin:0 4px;"></div>
+
+    <label>🔀 Pick Order (Lane Spread):</label>
+    <form action="/upload-pickorder" method="post" enctype="multipart/form-data" style="display:flex;align-items:center;gap:8px;">
+      <input type="file" name="pickorder_file" accept=".csv" id="pickorder-upload-input" style="font-size:11px;" onchange="this.form.submit()">
+    </form>
+    {% set po_src = status.sources.pickorder %}
+    {% if po_src.available %}
+    <span class="scc-loaded">✅ {{ po_src.record_count }} routes / {{ po_src.loaded_at }}</span>
+    {% else %}
+    <span class="scc-missing">No PickOrder — lanes consecutive</span>
+    {% endif %}
+
+    {% if wave_plan and wave_plan.pickorder_applied %}
+    <span style="background:#e6f4ea;color:var(--green);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:4px;">
+      🔀 SPREAD ACTIVE
+    </span>
+    {% endif %}
+  </div>
+
+  <!-- ══ WAVE PLAN ══ -->
+  {% if wave_plan %}
+
+  <!-- SUMMARY CARDS -->
+  <div class="cards">
+    <div class="card card-orange"><div class="card-val">{{ wave_plan.summary.total_routes }}</div><div class="card-lbl">Total Routes</div></div>
+    <div class="card card-blue"><div class="card-val">{{ wave_plan.summary.total_waves }}</div><div class="card-lbl">Waves</div></div>
+    <div class="card card-orange"><div class="card-val">{{ wave_plan.summary.total_carts }}</div><div class="card-lbl">Total Carts</div></div>
+    <div class="card card-green"><div class="card-val">{{ wave_plan.summary.cargo_bike_routes }}</div><div class="card-lbl">Cargo Bikes</div></div>
+    <div class="card"><div class="card-val">{{ wave_plan.summary.van_routes }}</div><div class="card-lbl">Van Routes</div></div>
+    {% if wave_plan.optimisation %}
+    <div class="card card-blue">
+      <div class="card-val" style="color:var(--blue);">{{ wave_plan.optimisation.paired_routes }}</div>
+      <div class="card-lbl">Routes Paired</div>
+    </div>
+    <div class="card card-green">
+      <div class="card-val" style="color:var(--green);">{{ wave_plan.optimisation.avg_utilisation }}%</div>
+      <div class="card-lbl">Avg Lane Util</div>
+    </div>
+    {% if wave_plan.optimisation.overcap_routes > 0 %}
+    <div class="card card-red">
+      <div class="card-val" style="color:var(--red);">{{ wave_plan.optimisation.overcap_routes }}</div>
+      <div class="card-lbl">⚠ Over Capacity</div>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  <!-- ══ OPTIMISATION SUMMARY PANEL ══ -->
+  {% if wave_plan.optimisation %}
+  {% set opt = wave_plan.optimisation %}
+  <div class="opt-panel">
+    <div class="opt-panel-hdr">
+      <h3>🔧 Cart-Optimised Lane Placement
+        <span style="font-weight:400;font-size:11px;color:var(--grey);">Waves paired in groups of 2 &middot; max 6 carts per lane &middot; no two routes from same wave share a lane</span>
+      </h3>
+      <button class="btn btn-dark btn-sm" onclick="toggleOptDetail()">Toggle detail</button>
+    </div>
+    <div class="opt-stats">
+      <div class="opt-stat">
+        <div class="opt-stat-val opt-stat-green">{{ opt.paired_routes }}</div>
+        <div class="opt-stat-lbl">Routes Paired</div>
+      </div>
+      <div class="opt-stat">
+        <div class="opt-stat-val opt-stat-blue">{{ opt.solo_routes }}</div>
+        <div class="opt-stat-lbl">Solo Routes</div>
+      </div>
+      <div class="opt-stat">
+        <div class="opt-stat-val opt-stat-green">{{ opt.avg_utilisation }}%</div>
+        <div class="opt-stat-lbl">Avg Utilisation</div>
+      </div>
+      <div class="opt-stat">
+        <div class="opt-stat-val opt-stat-blue">{{ opt.lanes_used }}/{{ opt.lanes_total }}</div>
+        <div class="opt-stat-lbl">Lanes Used</div>
+      </div>
+      {% if opt.overcap_routes > 0 %}
+      <div class="opt-stat">
+        <div class="opt-stat-val opt-stat-red">{{ opt.overcap_routes }}</div>
+        <div class="opt-stat-lbl">Over Capacity</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="opt-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#e8f0fe;border:1px solid #1967d2;"></div> Paired with partner wave</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f1f3f4;border:1px solid #dee2e6;"></div> Solo (no pair fits ≤6 carts)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fce8e6;border:1px solid #f5c6cb;"></div> Over capacity (&gt;6 carts) — action required</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--cap-ok);"></div> Lane util ≤66%</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--cap-hi);"></div> Lane util 67–99%</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--cap-full);"></div> Lane util 100% (full)</div>
+    </div>
+  </div>
+
+  <!-- OVER-CAPACITY BANNER -->
+  {% if opt.overcap_routes > 0 %}
+  <div class="overcap-banner">
+    <strong>⚠ {{ opt.overcap_routes }} route(s) exceed 6-cart lane capacity and require manual review:</strong>
+    <div class="overcap-list">
+      {% for r in opt.overcap_route_list %}
+      <span class="overcap-chip">{{ r.route }} ({{ r.carts }}c)</span>
+      {% endfor %}
+    </div>
+    <div style="margin-top:6px;font-size:11px;color:#555;">
+      These routes have been placed solo in their own lane. Consider splitting the load or using an overflow lane.
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <!-- DSP BREAKDOWN -->
+  <div class="section-lbl">DSP Breakdown</div>
+  <div class="dsp-grid">
+    {% for dsp, cnt in wave_plan.summary.dsp_breakdown.items() %}
+    <div class="dsp-card">
+      <div class="dsp-name">{{ dsp }}</div>
+      <div class="dsp-cnt">{{ cnt }} routes</div>
+      <a href="/dsp/{{ dsp }}" style="font-size:10px;color:var(--blue);">View →</a>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- WAVES -->
+  <div class="section-lbl">📦 Dispatch Waves</div>
+  <div class="wave-grid">
+    {% for wave in wave_plan.waves %}
+    <div class="wave-block" id="wb-{{ wave.wave_label|replace(' ','_') }}">
+      <div class="wave-hdr s-{{ wave.status or 'not_started' }}">
+        <div>
+          <div class="wave-title">
+            {{ wave.wave_label }}
+            {% if wave.pair_label %}
+            <span class="wave-pair-badge">🔀 paired with {{ wave.pair_label }}</span>
+            {% endif %}
+          </div>
+          <div class="wave-meta">
+            A:{{ wave.pad_a.wave_time }} &nbsp;B:{{ wave.pad_b.wave_time }} &nbsp;|&nbsp;
+            {{ wave.pad_a.total_routes + wave.pad_b.total_routes }}r &nbsp;
+            {{ wave.pad_a.total_carts + wave.pad_b.total_carts }}c
+            {% if wave.pad_a.paired_count is defined %}
+            &nbsp;|&nbsp; 🔀 {{ wave.pad_a.paired_count + wave.pad_b.paired_count }} paired
+            {% endif %}
+          </div>
+        </div>
+        <div class="wave-btns">
+          <button class="btn btn-dark btn-sm" onclick="waveAction('{{ wave.wave_label }}','staged')">Staging</button>
+          <button class="btn btn-green btn-sm" onclick="waveAction('{{ wave.wave_label }}','cleared')">Clear ✓</button>
+          <button class="btn btn-blue btn-sm" onclick="waveAction('{{ wave.wave_label }}','swiped')">Swiped</button>
+        </div>
+      </div>
+      <div class="pads">
+        {% for pad_data, pad_lbl in [(wave.pad_a, 'A'), (wave.pad_b, 'B')] %}
+        <div class="pad">
+          <div class="pad-hdr">
+            <span>PAD {{ pad_lbl }} ▸ {{ pad_data.wave_time }}</span>
+            <span>{{ pad_data.total_routes }}r / {{ pad_data.total_carts }}c</span>
+          </div>
+          <div class="pad-timing">▶ {{ pad_data.first_entrance }} → {{ pad_data.last_entrance }} | Exit: {{ pad_data.last_exit }}</div>
+
+          {# ── LANE CAPACITY BAR ── #}
+          {% if pad_data.total_carts is defined and pad_data.total_routes > 0 %}
+          {% set max_cap = pad_data.total_routes * 6 %}
+          {% set fill_pct = [(pad_data.total_carts / max_cap * 100)|int, 100]|min %}
+          {% set bar_cls = 'cap-ok' if fill_pct <= 66 else ('cap-hi' if fill_pct <= 99 else 'cap-full') %}
+          <div class="lane-cap-wrap">
+            <div class="lane-cap-bar">
+              <div class="lane-cap-fill {{ bar_cls }}" style="width:{{ fill_pct }}%;"></div>
+            </div>
+            <div class="lane-cap-lbl">{{ pad_data.total_carts }}/{{ max_cap }}c ({{ fill_pct }}%)</div>
+          </div>
+          {% endif %}
+
+          {% if pad_data.routes %}
+          <table>
+            <thead>
+              <tr>
+                <th>Lane</th>
+                <th>DSP</th>
+                <th>Route</th>
+                <th>Type</th>
+                <th>Carts</th>
+                <th>Cap</th>
+                <th>Shares Lane</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for r in pad_data.routes %}
+            {# determine row class — priority: overcap > paired > lev/nursery/rd #}
+            {% set row_cls = '' %}
+            {% if r.total_carts > 6 %}{% set row_cls = 'overcap' %}
+            {% elif r.shares_with %}{% set row_cls = 'paired' %}
+            {% elif r.is_low_emission %}{% set row_cls = 'lev' %}
+            {% elif r.is_nursery %}{% set row_cls = 'nursery' %}
+            {% elif r.is_remote_debrief %}{% set row_cls = 'rd' %}
+            {% endif %}
+            <tr class="{{ row_cls }}">
+              <td><span class="lane-num">{{ r.lane }}</span></td>
+              <td><span class="dsp-chip">{{ r.dsp }}</span></td>
+              <td class="rc">{{ r.route }}</td>
+              <td style="font-size:10px;">{{ r.service_short }}</td>
+
+              {# CARTS CELL #}
+              <td>
+                {% if r.total_carts > 0 %}
+                  <span class="cart-val {% if r.total_carts > 6 %}opt-stat-red{% endif %}">{{ r.total_carts }}</span>
+                  <span style="font-size:9px;color:#999;"> ({{ r.bags }}+{{ r.ovs }})</span>
+                {% else %}
+                  <span class="no-cart">—</span>
+                {% endif %}
+              </td>
+
+              {# CAPACITY PIP CELL #}
+              <td>
+                {% if r.shares_with %}
+                  {% set combined = r.total_carts + r.partner_carts %}
+                  {% set util = (combined / 6 * 100)|int %}
+                  {% set pip_cls = 'ok' if util <= 66 else ('hi' if util <= 99 else 'full') %}
+                  <div class="cap-cell">
+                    <span class="cap-pip {{ pip_cls }}"></span>
+                    <span style="font-size:10px;color:var(--grey);">{{ combined }}/6 ({{ util }}%)</span>
+                  </div>
+                {% elif r.total_carts > 0 %}
+                  {% set util = (r.total_carts / 6 * 100)|int %}
+                  {% set pip_cls = 'ok' if util <= 66 else ('hi' if util <= 99 else 'full') %}
+                  <div class="cap-cell">
+                    <span class="cap-pip {{ pip_cls }}"></span>
+                    <span style="font-size:10px;color:var(--grey);">{{ r.total_carts }}/6 ({{ util }}%)</span>
+                  </div>
+                {% else %}
+                  <span class="no-cart">—</span>
+                {% endif %}
+              </td>
+
+              {# SHARES LANE CELL #}
+              <td>
+                {% if r.total_carts > 6 %}
+                  <span class="badge badge-over">⚠ OVER CAP</span>
+                {% elif r.shares_with %}
+                  <div class="shares-cell">
+                    <span class="badge badge-pair">🔀 PAIRED</span>
+                    <span class="route-ref" style="margin-left:3px;">w/ {{ r.shares_with }}</span>
+                  </div>
+                {% else %}
+                  <span class="badge badge-solo">SOLO</span>
+                {% endif %}
+              </td>
+
+              {# SERVICE TYPE NOTES #}
+              <td>
+                {% if r.is_low_emission %}<span class="badge badge-lev">LEV</span> {% endif %}
+                {% if r.is_nursery %}<span class="badge badge-nr">NR</span> {% endif %}
+                {% if r.is_remote_debrief %}<span class="badge badge-rd">RD</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div style="font-size:11px;color:#bbb;padding:6px;">No routes</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- WAVE C — CARGO BIKES -->
+  {% if wave_plan.wave_c %}
+  <div class="section-lbl">🚲 Wave C — Cargo Bikes (independent flow)</div>
+  {% for wc in wave_plan.wave_c %}
+  <div class="wave-c-block">
+    <div class="wave-c-hdr">
+      <div>
+        <strong>{{ wc.wave_label }}</strong> — {{ wc.wave_time }} | {{ wc.total_routes }} bikes | Arrive: {{ wc.first_entrance }}
+        <span style="background:rgba(255,255,255,.15);padding:2px 7px;border-radius:10px;font-size:10px;margin-left:8px;">Lanes NOT spread — cargo bike flow</span>
+      </div>
+      <button class="btn btn-sm" style="background:white;color:#1a237e;" onclick="waveAction('{{ wc.wave_label }}','cleared')">Clear ✓</button>
+    </div>
+    <div style="padding:8px 10px;">
+      <table>
+        <thead>
+          <tr><th>Lane</th><th>DSP</th><th>Route</th><th>Type</th><th>Carts</th></tr>
+        </thead>
+        <tbody>
+          {% for r in wc.routes %}
+          <tr>
+            <td><span class="lane-num">{{ r.lane }}</span></td>
+            <td><span class="dsp-chip">{{ r.dsp }}</span></td>
+            <td class="rc">{{ r.route }}</td>
+            <td style="font-size:10px;">{{ r.service_short }}</td>
+            <td>{% if r.total_carts > 0 %}<span class="cart-val">{{ r.total_carts }}</span>{% else %}<span class="no-cart">—</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% elif can_generate %}
+  <div class="no-plan">
+    <h3>Data loaded — click Generate to build the plan</h3>
+    <form action="/generate-plan" method="post" style="margin-top:12px;">
+      <button type="submit" class="btn btn-primary">🚛 Generate Wave Plan</button>
+    </form>
+  </div>
+
+  {% else %}
+  <div class="no-plan">
+    <h3>Wave plan not generated yet</h3>
+    <p>Resolve the data issues above to unlock plan generation.</p>
+  </div>
+  {% endif %}
+
+</div><!-- /main -->
+
+<!-- ══ PASTE MODALS ══ -->
+<div class="modal-overlay" id="modal-dispatch" onclick="if(event.target===this)closeModal('modal-dispatch')">
+  <div class="modal" style="position:relative;">
+    <button class="modal-close" onclick="closeModal('modal-dispatch')">✕</button>
+    <h3>📋 Paste Dispatch Plan</h3>
+    <p>Open the <a href="https://eu.dispatch.planning.last-mile.a2z.com/dispatch-planning/DNR1/761553f5-9fc1-4cef-8815-b974bc63f0a9/{{ today }}?laborType=DSP" target="_blank">Dispatch Planning page</a>, select all text (Ctrl+A), copy (Ctrl+C), then paste below.</p>
+    <form action="/paste-dispatch" method="post">
+      <textarea name="dispatch_text" placeholder="Paste full page content here..."></textarea>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-dark btn-sm" onclick="closeModal('modal-dispatch')">Cancel</button>
+        <button type="submit" class="btn btn-primary btn-sm">Load Dispatch Data</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-assignment" onclick="if(event.target===this)closeModal('modal-assignment')">
+  <div class="modal" style="position:relative;">
+    <button class="modal-close" onclick="closeModal('modal-assignment')">✕</button>
+    <h3>📋 Paste Assignment Planning</h3>
+    <p>Open the <a href="https://eu.assignment.planning.last-mile.a2z.com/assignment-planning/DNR1/761553f5-9fc1-4cef-8815-b974bc63f0a9/{{ today }}" target="_blank">Assignment Planning page</a>, select all text (Ctrl+A), copy (Ctrl+C), then paste below.</p>
+    <form action="/paste-assignment" method="post">
+      <textarea name="assignment_text" placeholder="Paste full page content here..."></textarea>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-dark btn-sm" onclick="closeModal('modal-assignment')">Cancel</button>
+        <button type="submit" class="btn btn-primary btn-sm">Load Assignment Data</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function showModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function toggleOptDetail() {
+  document.querySelectorAll('th:nth-child(6), td:nth-child(6), th:nth-child(7), td:nth-child(7)')
+    .forEach(el => el.style.display = el.style.display === 'none' ? '' : 'none');
+}
+
+function waveAction(label, action) {
+  fetch('/wave/' + encodeURIComponent(label) + '/status', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({action})
+  }).then(r => r.json()).then(d => {
+    if (d.success) {
+      const safe = label.replace(/ /g, '_');
+      const wb = document.getElementById('wb-' + safe);
+      if (wb) {
+        const hdr = wb.querySelector('.wave-hdr');
+        const cls = action === 'cleared' ? 'cleared' : action === 'swiped' ? 'dispatched' : 'staging';
+        hdr.className = 'wave-hdr s-' + cls;
+      }
+    }
+  });
+}
+
+function pollStatus() {
+  fetch('/api/status').then(r => r.json()).then(d => {
+    if (d.can_generate && !d.plan_built) location.reload();
+    else if (d.plan_built) location.reload();
+    else location.reload();
+  });
+}
+
+function sendSlack() {
+  fetch('/api/slack/test', {method:'POST'})
+    .then(r=>r.json())
+    .then(d=>alert(d.success ? '✅ Sent to Slack!' : '❌ Slack failed — check webhook URL'));
+}
+
+// Auto-poll every 45s while data is missing
+{% if missing %}
+setInterval(pollStatus, 45000);
+{% endif %}
+</script>
+</body>
+</html>
