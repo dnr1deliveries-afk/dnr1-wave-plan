@@ -215,9 +215,10 @@
   <div class="header-right">
     {% if wave_plan %}
     <a href="/export/wave-plan" class="btn btn-green btn-sm" title="Download print-optimized Excel file">📄 Excel</a>
-    <a href="/wave-print" target="_blank" class="btn btn-dark btn-sm">🖨 Print</a>
-    <button class="btn btn-dark btn-sm" onclick="sendSlack()">📤 Slack</button>
+    <a href="/wave-print" target="_blank" class="btn btn-dark btn-sm">🖨️ Print</a>
+    <button class="btn btn-dark btn-sm" onclick="sendSlack()">📣 Slack</button>
     {% endif %}
+    <a href="/logs" class="btn btn-dark btn-sm" title="View application logs">📋 Logs</a>
     <form action="/clear-plan" method="post" style="display:inline;" onsubmit="return confirm('Clear all data and start fresh?')">
       <button type="submit" class="btn btn-red btn-sm">🗑️ Clear</button>
     </form>
@@ -225,7 +226,6 @@
       <button type="submit" class="btn btn-dark btn-sm" title="Clear cached CSV files">🧹 Clear Cache</button>
     </form>
   </div>
-</div>
 
 <!-- DATA STATUS BAR -->
 <div class="status-bar">

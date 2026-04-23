@@ -27,6 +27,8 @@ File Caching (v1.5):
 import os
 import io
 import json
+import logging
+from collections import deque
 from datetime import datetime, date
 from flask import (
     Flask, render_template, request, jsonify,
@@ -51,6 +53,50 @@ from file_cache import (
     get_cache_status, clear_cache, clear_all_cache, has_cached_file,
 )
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  IN-MEMORY LOG BUFFER
+# ─────────────────────────────────────────────────────────────────────────────
+
+class MemoryLogHandler(logging.Handler):
+    """Custom log handler that stores logs in memory for the /logs page."""
+    
+    def __init__(self, capacity=500):
+        super().__init__()
+        self.capacity = capacity
+        self.logs = deque(maxlen=capacity)
+    
+    def emit(self, record):
+        try:
+            log_entry = {
+                "timestamp": datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S"),
+                "level": record.levelname,
+                "message": self.format(record),
+                "module": record.module,
+                "funcName": record.funcName,
+                "lineno": record.lineno,
+            }
+            self.logs.append(log_entry)
+        except Exception:
+            self.handleError(record)
+    
+    def get_logs(self, level_filter=None, limit=100):
+        """Get logs, optionally filtered by level."""
+        logs = list(self.logs)
+        if level_filter:
+            logs = [l for l in logs if l["level"] == level_filter.upper()]
+        return list(reversed(logs))[:limit]  # Most recent first
+    
+    def clear(self):
+        """Clear all logs."""
+        self.logs.clear()
+
+
+# Global log handler instance
+memory_handler = MemoryLogHandler(capacity=500)
+memory_handler.setLevel(logging.DEBUG)
+memory_handler.setFormatter(logging.Formatter('%(message)s'))
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  APP INIT
 # ─────────────────────────────────────────────────────────────────────────────
@@ -58,6 +104,14 @@ from file_cache import (
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dnr1-wave-dev-key")
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB
+
+# Attach memory log handler to Flask logger
+app.logger.addHandler(memory_handler)
+app.logger.setLevel(logging.DEBUG)
+
+# Also capture werkzeug and root logger
+logging.getLogger('werkzeug').addHandler(memory_handler)
+logging.getLogger().addHandler(memory_handler)
 
 MIDWAY_BYPASS = os.environ.get("MIDWAY_BYPASS", "false").lower() == "true"
 
@@ -69,6 +123,7 @@ _wave_statuses = {}
 
 # Built plan cache
 _plan_cache = {"wave_plan": None, "built_at": None}
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -223,26 +278,35 @@ def upload_pickorder():
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.route("/generate-plan", methods=["POST"])
+@app.route("/generate-plan", methods=["POST"])
 def generate_plan():
     """Manually trigger plan generation — only if all data present."""
+    app.logger.info("Generate plan requested")
     can_gen, missing = _get_plan_readiness()
     if not can_gen:
         missing_names = [m["name"] for m in missing]
+        app.logger.warning(f"Cannot generate plan — missing: {missing_names}")
         flash(f"❌ Cannot generate plan — missing: {', '.join(missing_names)}", "error")
         return redirect(url_for("index"))
 
+    app.logger.info(f"Data sources ready: dispatch={_dm.dispatch_data is not None}, "
+                    f"assignment={_dm.assignment_data is not None}, "
+                    f"scc={_dm.scc_data is not None}, "
+                    f"pickorder={_dm.pickorder_data is not None}")
+    
     wave_plan = _build_plan()
     if wave_plan:
         s = wave_plan["summary"]
+        app.logger.info(f"Wave plan generated: {s['total_waves']} waves, {s['total_routes']} routes, {s['total_carts']} carts")
         flash(
             f"✅ Wave plan generated — {s['total_waves']} waves, "
             f"{s['total_routes']} routes, {s['total_carts']} carts",
             "success",
         )
     else:
-        flash("❌ Plan generation failed — check error logs", "error")
+        app.logger.error("Plan generation returned None — check previous errors")
+        flash("❌ Plan generation failed — <a href='/logs?level=ERROR'>view error logs</a>", "error")
     return redirect(url_for("index"))
-
 
 @app.route("/clear-plan", methods=["POST"])
 @app.route("/clear-plan", methods=["POST"])
@@ -337,10 +401,50 @@ def wave_print():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  LOGS PAGE
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/logs")
+def logs_page():
+    """Display application logs for debugging."""
+    level_filter = request.args.get("level", None)
+    limit = int(request.args.get("limit", 100))
+    logs = memory_handler.get_logs(level_filter=level_filter, limit=limit)
+    return render_template(
+        "logs.html",
+        logs=logs,
+        level_filter=level_filter,
+        limit=limit,
+        plan_date=date.today().strftime("%A %d %B %Y"),
+    )
+
+
+@app.route("/api/logs")
+def api_logs():
+    """JSON endpoint for logs."""
+    level_filter = request.args.get("level", None)
+    limit = int(request.args.get("limit", 100))
+    logs = memory_handler.get_logs(level_filter=level_filter, limit=limit)
+    return jsonify({
+        "logs": logs,
+        "count": len(logs),
+        "level_filter": level_filter,
+        "limit": limit,
+    })
+
+
+@app.route("/api/logs/clear", methods=["POST"])
+def api_logs_clear():
+    """Clear all logs."""
+    memory_handler.clear()
+    app.logger.info("Logs cleared by user")
+    return jsonify({"success": True, "message": "Logs cleared"})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  EXCEL EXPORT & PRINT
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.route("/export/wave-plan")
 def export_wave_plan_excel():
     """Download print-optimized WAVE PLAN Excel file."""
     wave_plan = _plan_cache.get("wave_plan")

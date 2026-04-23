@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DNR1 Wave Plan — Logs</title>
+  <style>
+    :root {
+      --orange: #FF9900; --dark: #131921; --blue: #146EB4;
+      --green: #1e8e3e; --red: #c5221f; --yellow: #f9ab00;
+      --grey: #5f6368; --border: #dee2e6; --light: #f8f9fa;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #eee; font-size: 13px; }
+
+    /* ── HEADER ── */
+    .header { background: var(--dark); color: white; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+    .header h1 { font-size: 18px; font-weight: 800; }
+    .header .meta { font-size: 11px; color: #aaa; margin-top: 2px; }
+    .header-right { display: flex; gap: 8px; align-items: center; }
+    .btn { padding: 6px 14px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
+    .btn-primary { background: var(--orange); color: #111; }
+    .btn-dark { background: #2d3748; color: white; }
+    .btn-red { background: var(--red); color: white; }
+    .btn-sm { padding: 4px 10px; font-size: 11px; }
+
+    /* ── CONTROLS ── */
+    .controls { background: #16213e; padding: 12px 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #0f3460; }
+    .controls label { font-size: 11px; color: #aaa; margin-right: 4px; }
+    .controls select, .controls input { background: #0f3460; border: 1px solid #1a1a40; color: #eee; padding: 6px 10px; border-radius: 4px; font-size: 12px; }
+    .controls select:focus, .controls input:focus { outline: none; border-color: var(--orange); }
+    .filter-btn { background: var(--blue); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .filter-btn:hover { background: #1a7bd4; }
+    .filter-btn.active { background: var(--orange); color: #111; }
+
+    /* ── STATS ── */
+    .stats { display: flex; gap: 16px; margin-left: auto; }
+    .stat { text-align: center; }
+    .stat-val { font-size: 18px; font-weight: 700; }
+    .stat-lbl { font-size: 10px; color: #aaa; text-transform: uppercase; }
+    .stat-error { color: var(--red); }
+    .stat-warn { color: var(--yellow); }
+    .stat-info { color: var(--blue); }
+
+    /* ── LOG TABLE ── */
+    .log-container { padding: 16px 20px; }
+    .log-table { width: 100%; border-collapse: collapse; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; }
+    .log-table th { background: #0f3460; color: #aaa; text-align: left; padding: 8px 12px; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; position: sticky; top: 56px; }
+    .log-table td { padding: 8px 12px; border-bottom: 1px solid #1a1a40; vertical-align: top; }
+    .log-table tr:hover { background: #16213e; }
+
+    /* Log levels */
+    .level { padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+    .level-DEBUG { background: #374151; color: #9ca3af; }
+    .level-INFO { background: #1e3a5f; color: #60a5fa; }
+    .level-WARNING { background: #78350f; color: #fbbf24; }
+    .level-ERROR { background: #7f1d1d; color: #f87171; }
+    .level-CRITICAL { background: #831843; color: #f472b6; }
+
+    .timestamp { color: #6b7280; white-space: nowrap; }
+    .module { color: #8b5cf6; }
+    .message { color: #e5e7eb; word-break: break-word; max-width: 800px; }
+    .message pre { margin: 4px 0 0 0; padding: 8px; background: #0f172a; border-radius: 4px; overflow-x: auto; font-size: 11px; color: #94a3b8; }
+
+    /* ── EMPTY STATE ── */
+    .empty-state { text-align: center; padding: 60px 20px; color: #6b7280; }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state h3 { font-size: 16px; color: #9ca3af; margin-bottom: 8px; }
+    .empty-state p { font-size: 13px; }
+
+    /* ── AUTO-REFRESH ── */
+    .auto-refresh { display: flex; align-items: center; gap: 8px; }
+    .auto-refresh input[type="checkbox"] { width: 16px; height: 16px; }
+  </style>
+</head>
+<body>
+  <!-- HEADER -->
+  <div class="header">
+    <div>
+      <h1>📋 Application Logs</h1>
+      <div class="meta">{{ plan_date }} | DNR1 Wave Plan Tool</div>
+    </div>
+    <div class="header-right">
+      <a href="/" class="btn btn-dark">← Back to Dashboard</a>
+      <button onclick="clearLogs()" class="btn btn-red btn-sm">🗑️ Clear Logs</button>
+      <button onclick="refreshLogs()" class="btn btn-primary btn-sm">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="controls">
+    <div>
+      <label>Level:</label>
+      <button class="filter-btn {% if not level_filter %}active{% endif %}" onclick="filterLevel('')">All</button>
+      <button class="filter-btn {% if level_filter == 'DEBUG' %}active{% endif %}" onclick="filterLevel('DEBUG')">Debug</button>
+      <button class="filter-btn {% if level_filter == 'INFO' %}active{% endif %}" onclick="filterLevel('INFO')">Info</button>
+      <button class="filter-btn {% if level_filter == 'WARNING' %}active{% endif %}" onclick="filterLevel('WARNING')">Warning</button>
+      <button class="filter-btn {% if level_filter == 'ERROR' %}active{% endif %}" onclick="filterLevel('ERROR')">Error</button>
+    </div>
+    <div>
+      <label>Limit:</label>
+      <select onchange="filterLimit(this.value)">
+        <option value="50" {% if limit == 50 %}selected{% endif %}>50</option>
+        <option value="100" {% if limit == 100 %}selected{% endif %}>100</option>
+        <option value="200" {% if limit == 200 %}selected{% endif %}>200</option>
+        <option value="500" {% if limit == 500 %}selected{% endif %}>500</option>
+      </select>
+    </div>
+    <div class="auto-refresh">
+      <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()">
+      <label for="autoRefresh">Auto-refresh (5s)</label>
+    </div>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-val">{{ logs|length }}</div>
+        <div class="stat-lbl">Total</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val stat-error">{{ logs|selectattr('level', 'equalto', 'ERROR')|list|length }}</div>
+        <div class="stat-lbl">Errors</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val stat-warn">{{ logs|selectattr('level', 'equalto', 'WARNING')|list|length }}</div>
+        <div class="stat-lbl">Warnings</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOG TABLE -->
+  <div class="log-container">
+    {% if logs %}
+    <table class="log-table">
+      <thead>
+        <tr>
+          <th style="width: 140px;">Timestamp</th>
+          <th style="width: 80px;">Level</th>
+          <th style="width: 120px;">Module</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="timestamp">{{ log.timestamp }}</td>
+          <td><span class="level level-{{ log.level }}">{{ log.level }}</span></td>
+          <td class="module">{{ log.module }}:{{ log.lineno }}</td>
+          <td class="message">
+            {% if '\n' in log.message %}
+              {{ log.message.split('\n')[0] }}
+              <pre>{{ log.message.split('\n')[1:] | join('\n') }}</pre>
+            {% else %}
+              {{ log.message }}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">📭</div>
+      <h3>No logs yet</h3>
+      <p>Logs will appear here as the application runs.<br>Try generating a wave plan or uploading data.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <script>
+    let autoRefreshInterval = null;
+
+    function filterLevel(level) {
+      const params = new URLSearchParams(window.location.search);
+      if (level) {
+        params.set('level', level);
+      } else {
+        params.delete('level');
+      }
+      window.location.search = params.toString();
+    }
+
+    function filterLimit(limit) {
+      const params = new URLSearchParams(window.location.search);
+      params.set('limit', limit);
+      window.location.search = params.toString();
+    }
+
+    function refreshLogs() {
+      window.location.reload();
+    }
+
+    function clearLogs() {
+      if (confirm('Clear all logs?')) {
+        fetch('/api/logs/clear', { method: 'POST' })
+          .then(r => r.json())
+          .then(() => refreshLogs());
+      }
+    }
+
+    function toggleAutoRefresh() {
+      const checkbox = document.getElementById('autoRefresh');
+      if (checkbox.checked) {
+        autoRefreshInterval = setInterval(refreshLogs, 5000);
+      } else {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+      }
+    }
+
+    // Restore auto-refresh state from localStorage
+    if (localStorage.getItem('logsAutoRefresh') === 'true') {
+      document.getElementById('autoRefresh').checked = true;
+      toggleAutoRefresh();
+    }
+
+    document.getElementById('autoRefresh').addEventListener('change', function() {
+      localStorage.setItem('logsAutoRefresh', this.checked);
+    });
+  </script>
+</body>
+</html>
