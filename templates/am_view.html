@@ -105,9 +105,9 @@
     .overcap-chip { background: var(--red); color: white; padding: 2px 7px; border-radius: 10px; font-size: 10px; font-weight: 700; }
 
     /* ── WAVE GRID ── */
-    .wave-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
-    @media (max-width: 1100px) { .wave-grid { grid-template-columns: 1fr; } }
-    .wave-block { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); overflow: hidden; }
+    /* ── WAVE GRID ── */
+    /* Each wave takes full width - Pad A | Pad B shown side-by-side within each wave */
+    .wave-grid { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
     .wave-hdr { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid transparent; }
     .wave-hdr.s-not_started { background: #f8f9fa; border-color: #dee2e6; }
     .wave-hdr.s-staging      { background: #fef7e0; border-color: var(--yellow); }
