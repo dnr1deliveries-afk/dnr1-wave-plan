@@ -410,7 +410,7 @@ def _build_cargo_bike_waves(dispatch_data, assignment_data, scc_data, cfg):
             "on_pad_time": _fmt_time(wave_time - timedelta(minutes=cfg.get("on_pad_offset_min", 5))),
             "last_exit_time": _fmt_time(wave_time + timedelta(minutes=cfg.get("last_exit_min", 25))),
             "routes": routes,
-            "route_count": len(routes),
+            "total_routes": len(routes),  # Must match key expected by _build_summary
             "total_carts": sum(r.get("total_carts", 0) for r in routes),
             "status": "not_started",
             "cleared_at": None,
