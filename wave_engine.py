@@ -1,14 +1,18 @@
 """
 wave_engine.py — Core wave plan builder for DNR1.
 
-Produces a structured wave plan from dispatch + assignment + SCC + pickorder data.
+v1.5 UPDATE: PickOrder CSV is now the SOURCE OF TRUTH for wave structure.
+  - Wave times come from PickOrder dispatchTime
+  - Route-to-pad assignments come from PickOrder dispatchArea (STG-A vs STG-B)
+  - Route counts per wave match PickOrder exactly
+  - Dispatch/Assignment data used only for enrichment (DSP, DA, service type)
+  - SCC data used for cart counts
 
 Wave structure:
   - Waves 1-N, each with Pad A and Pad B (staggered by pad_b_offset_min)
   - Wave C: cargo bikes (BK_ routes) — separate, independent timing, no lane spread
   - Up to 30 staging lanes per pad
   - Dynamic: built from live data, not fixed templates
-  - Cart-optimised: routes paired in groups of 2 waves where combined <= 6 carts
   - Lane spread: evenly across all 30 lanes via pickorder CSV (Pad C excluded)
 """
 
@@ -114,14 +118,23 @@ def build_wave_plan(dispatch_data, assignment_data, scc_data,
     """
     Build the complete wave plan.
 
+    PRIORITY (v1.5): If pickorder_data has 'waves', use it as SOURCE OF TRUTH
+    for wave structure (times, pads, routes per wave). Dispatch data is fallback.
+
     dispatch_data  : {wave_time_str: {"A": [...], "B": [...], "C": [...]}}
     assignment_data: {route_code: {service_type, dsp, da_id, ...}}
     scc_data       : {route_code: {bags, ovs, total_carts, ...}}
-    pickorder_data : {route_code: {lane_num_a/lane_num_b, ...}} or None
+    pickorder_data : parsed pickorder with 'waves' dict (from pickorder_parser.py)
     config         : optional overrides
     """
-    cfg    = {**DEFAULT_CONFIG, **(config or {})}
-    waves  = _build_main_waves(dispatch_data, assignment_data, scc_data, cfg, pickorder_data)
+    cfg = {**DEFAULT_CONFIG, **(config or {})}
+    
+    # v1.5: Use PickOrder as source of truth if it has waves structure
+    if pickorder_data and pickorder_data.get("waves"):
+        waves = _build_waves_from_pickorder(pickorder_data, assignment_data, scc_data, cfg)
+    else:
+        waves = _build_main_waves(dispatch_data, assignment_data, scc_data, cfg, pickorder_data)
+    
     wave_c = _build_cargo_bike_waves(dispatch_data, assignment_data, scc_data, cfg)
 
     # Annotate wave pair labels  (Wave 1 ↔ Wave 2, Wave 3 ↔ Wave 4 …)
@@ -146,18 +159,161 @@ def build_wave_plan(dispatch_data, assignment_data, scc_data,
         "summary":           _build_summary(waves, wave_c, scc_data, assignment_data),
         "optimisation":      _build_optimisation_summary(waves),
         "warnings":          all_warnings,
-        "pickorder_applied": bool(pickorder_data),
+        "pickorder_applied": bool(pickorder_data and pickorder_data.get("waves")),
         "config":            cfg,
         "plan_date":         _today_str(),
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  WAVE BUILDERS
+#  PICKORDER-BASED WAVE BUILDER (v1.5 - Source of Truth)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _build_main_waves(dispatch_data, assignment_data, scc_data, cfg, pickorder_data):
-    waves    = []
+def _build_waves_from_pickorder(pickorder_data, assignment_data, scc_data, cfg):
+    """
+    Build waves directly from PickOrder data (source of truth for wave structure).
+    
+    PickOrder structure from pickorder_parser.py:
+      pickorder_data["waves"] = {
+        "10:20": {
+          "A": [{"route": "CA_A151", "spread_lane": 1, "lane_label": "STG-A1", ...}, ...],
+          "B": [{"route": "CA_A200", "spread_lane": 1, "lane_label": "STG-B1", ...}, ...]
+        },
+        "10:30": {...},
+        ...
+      }
+    
+    Each unique time slot with Pad A routes = one wave.
+    Pad B routes at +10 minutes are paired with the previous A wave.
+    """
+    waves = []
+    wave_num = 1
+    
+    po_waves = pickorder_data.get("waves", {})
+    
+    # Get all unique times that have Pad A routes (these define our waves)
+    a_times = sorted([t for t, pads in po_waves.items() if pads.get("A")], key=_parse_time_str)
+    
+    # Track which B times we've used
+    used_b_times = set()
+    
+    for a_time in a_times:
+        # Get Pad A routes
+        pad_a_raw = po_waves.get(a_time, {}).get("A", [])
+        
+        # Find corresponding Pad B time (typically 10 min after A)
+        a_dt = _parse_time_str(a_time)
+        expected_b_time = _fmt_time(a_dt + timedelta(minutes=cfg["pad_b_offset_min"]))
+        
+        # Look for B routes at expected time
+        pad_b_raw = []
+        b_time_used = expected_b_time
+        
+        if expected_b_time in po_waves and po_waves[expected_b_time].get("B"):
+            pad_b_raw = po_waves[expected_b_time].get("B", [])
+            used_b_times.add(expected_b_time)
+        
+        # Enrich routes with assignment and SCC data
+        pad_a = _enrich_pickorder_routes(pad_a_raw, assignment_data, scc_data)
+        pad_b = _enrich_pickorder_routes(pad_b_raw, assignment_data, scc_data)
+        
+        # Sort by spread_lane
+        pad_a.sort(key=lambda r: r.get("lane_num") or r.get("spread_lane") or 99)
+        pad_b.sort(key=lambda r: r.get("lane_num") or r.get("spread_lane") or 99)
+        
+        pad_a_time = _parse_time_str(a_time)
+        pad_b_time = _parse_time_str(b_time_used)
+        
+        waves.append({
+            "wave_number": wave_num,
+            "wave_label":  f"Wave {wave_num}",
+            "pair_label":  None,
+            "pad_a":       _build_pad_block("A", pad_a, pad_a_time, cfg),
+            "pad_b":       _build_pad_block("B", pad_b, pad_b_time, cfg),
+            "status":      "not_started",
+            "cleared_at":  None,
+            "swiped_at":   None,
+        })
+        wave_num += 1
+    
+    # Handle any remaining B-only times (shouldn't normally happen)
+    for time_str, pads in sorted(po_waves.items(), key=lambda x: _parse_time_str(x[0])):
+        if time_str in used_b_times:
+            continue
+        if not pads.get("B"):
+            continue
+        # This is an orphan B time - create a wave with empty A
+        pad_b_raw = pads.get("B", [])
+        pad_b = _enrich_pickorder_routes(pad_b_raw, assignment_data, scc_data)
+        pad_b.sort(key=lambda r: r.get("lane_num") or r.get("spread_lane") or 99)
+        
+        b_dt = _parse_time_str(time_str)
+        a_dt = b_dt - timedelta(minutes=cfg["pad_b_offset_min"])
+        
+        waves.append({
+            "wave_number": wave_num,
+            "wave_label":  f"Wave {wave_num}",
+            "pair_label":  None,
+            "pad_a":       _build_pad_block("A", [], a_dt, cfg),
+            "pad_b":       _build_pad_block("B", pad_b, b_dt, cfg),
+            "status":      "not_started",
+            "cleared_at":  None,
+            "swiped_at":   None,
+        })
+        wave_num += 1
+    
+    return waves
+
+
+def _enrich_pickorder_routes(po_routes, assignment_data, scc_data):
+    """Enrich pickorder routes with assignment and SCC data."""
+    enriched = []
+    
+    for po in po_routes:
+        route_code = po.get("route", "")
+        if not route_code or route_code.startswith("BK_"):
+            continue
+        
+        assign = assignment_data.get(route_code, {})
+        scc = scc_data.get(route_code, {})
+        svc = assign.get("service_type", "")
+        
+        enriched.append({
+            "lane":             po.get("lane_label", ""),
+            "lane_num":         po.get("spread_lane", po.get("original_lane", 0)),
+            "spread_lane":      po.get("spread_lane", 0),
+            "original_lane":    po.get("original_lane", 0),
+            "route":            route_code,
+            "dsp":              assign.get("dsp", ""),
+            "da_id":            assign.get("da_id", "UNASSIGNED"),
+            "service_type":     svc,
+            "service_short":    _shorten_service_type(svc),
+            "duration_min":     assign.get("duration", 0),
+            "total_carts":      scc.get("total_carts", 0),
+            "bags":             scc.get("bags", 0),
+            "ovs":              scc.get("ovs", 0),
+            "pick_status":      scc.get("status", ""),
+            "stage_by":         scc.get("stage_by", ""),
+            "is_low_emission":  assign.get("is_low_emission", False) or "Low Emission" in svc,
+            "is_nursery":       assign.get("is_nursery", False) or "Nursery" in svc,
+            "is_remote_debrief": assign.get("is_remote_debrief", False) or "Remote Debrief" in svc,
+            "is_cargo_bike":    route_code.startswith("BK_"),
+            "notes":            _auto_notes(svc),
+            "shares_with":      None,
+            "partner_carts":    0,
+            "combined_carts":   scc.get("total_carts", 0),
+            "lane_utilization": 0,
+            "dispatched":       False,
+            "staged":           False,
+        })
+    
+    return enriched
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  WAVE BUILDERS (Fallback when no PickOrder)
+# ─────────────────────────────────────────────────────────────────────────────
+
     wave_num = 1
 
     for time_str in sorted(dispatch_data.keys(), key=_parse_time_str):
